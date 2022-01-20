@@ -13,21 +13,52 @@ package.IoTAutobahnVehicleSimulator = {
             KotlinTrailsGradle = 1.4.x;
             Ktlint = 0.38.x;
             KtlintGradle = 9.x;
+            BrazilGradleJavaWrapperGenerator = 1.1;
         };
     };
 
     dependencies = {
         1.0 = {
-            KotlinStdlib = 1.4.x;
+            KotlinStdlibJdk8 = 1.4.x;
+            KotlinxCoroutinesCore = 1.4.x;
+            KotlinxCoroutinesJdk8 = 1.4.x;
+
+            Picocli = 4.x;
+            AwsJavaSdk-S3 = 2.0;
+            Maven-com-michael-bull-kotlin-retry_kotlin-retry = 1.x;
+        };
+    };
+
+    runtime-dependencies = {
+        1.0 = {
+            Log4j-slf4j = 2.x;
+            log4j = 2.14.1;
         };
     };
 
     test-dependencies = {
         1.0 = {
-            # If only using JUnit 4, replace with 'Maven-junit_junit = 4.12.x;'
-            # and remove 'useJUnitPlatform' from build.gradle. For mixed
-            # JUnit 4 and 5 tests, keep this and add 'JUnit-4-12-migration = 5.x;'
             JUnit5 = 5.x;
+            MockK = 1.9.x;
+        };
+    };
+
+    remove-dependencies = {
+        1.0 = {
+            # These bring in Kotlin 1.3 JARs and the Lambda uses those when it shouldn't, so we remove these
+            # dependencies so only the Kotlin 1.4 JARs get packaged.
+            Maven-org-jetbrains-kotlin_kotlin-stdlib = 1.x;
+            Maven-org-jetbrains-kotlin_kotlin-stdlib-common = 1.x;
+        };
+    };
+
+    resolves-conflict-dependencies = {
+        1.0 = {
+            KotlinStdlibCommon = 1.4.x;
+            KotlinStdlib = 1.4.x;
+            KotlinxCoroutinesCore = 1.4.x;
+            KotlinReflect = 1.4.x;
+            KotlinStdlibJdk8 = 1.4.x;
         };
     };
 
