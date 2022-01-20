@@ -2,24 +2,24 @@ package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
 import picocli.CommandLine
 import picocli.CommandLine.Command
+import java.util.concurrent.Callable
+import kotlin.system.exitProcess
 
 @Command(
-    name = "checksum",
     mixinStandardHelpOptions = true,
     versionProvider = VersionProvider::class,
     description = ["Utility for launching simulated vehicles"]
 )
-class VehicleSimulatorCommand : Runnable {
+class VehicleSimulatorCommand : Callable<Int> {
 
-    override fun run() {
+    override fun call(): Int {
         // todo switch to logger
-        println("IoT FleetWise vehicle simulation utility")
+        println("Please specify commands")
+        return 1
     }
 
     companion object {
-        @kotlin.jvm.JvmStatic
-        fun main(args: Array<String>) {
-            CommandLine(VehicleSimulatorCommand()).execute(*args)
-        }
+        @JvmStatic
+        fun main(args: Array<String>): Unit = exitProcess(CommandLine(VehicleSimulatorCommand()).execute(*args))
     }
 }
