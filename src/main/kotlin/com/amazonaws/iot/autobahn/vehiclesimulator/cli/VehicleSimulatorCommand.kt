@@ -8,7 +8,8 @@ import kotlin.system.exitProcess
 @Command(
     mixinStandardHelpOptions = true,
     versionProvider = VersionProvider::class,
-    description = ["Utility for launching simulated vehicles"]
+    description = ["Utility for launching simulated vehicles"],
+    subcommands = [UploadToS3Command::class]
 )
 class VehicleSimulatorCommand : Callable<Int> {
 

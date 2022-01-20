@@ -73,6 +73,7 @@ coverageReport {
 check.dependsOn jacocoTestCoverageVerification
 jacocoTestCoverageVerification {
     violationRules {
+        // TODO increase code coverage
         rule { limit { minimum = 0.00 } }
     }
     afterEvaluate {
