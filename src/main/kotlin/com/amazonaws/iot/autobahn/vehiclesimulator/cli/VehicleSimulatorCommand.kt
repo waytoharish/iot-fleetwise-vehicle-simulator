@@ -9,7 +9,11 @@ import kotlin.system.exitProcess
     mixinStandardHelpOptions = true,
     versionProvider = VersionProvider::class,
     description = ["Utility for launching simulated vehicles"],
-    subcommands = [UploadToS3Command::class]
+    subcommands = [
+        UploadToS3Command::class,
+        LaunchVehicles::class,
+        StopVehicles::class
+    ]
 )
 class VehicleSimulatorCommand : Callable<Int> {
 
