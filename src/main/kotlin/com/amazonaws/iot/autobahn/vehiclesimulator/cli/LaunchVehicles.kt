@@ -21,7 +21,6 @@ class LaunchVehicles(private val ecsController: EcsController) : Callable<Int> {
     lateinit var simulationPackageUrl: String
 
     override fun call(): Int {
-        ecsController.getClusterLists()
         val taskArn = ecsController.runTask(simulationPackageUrl)
         println("vehicle launched! Task arn: $taskArn")
         return 0

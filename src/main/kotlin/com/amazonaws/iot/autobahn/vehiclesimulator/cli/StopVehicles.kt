@@ -20,8 +20,12 @@ class StopVehicles(private val ecsController: EcsController) : Callable<Int> {
     lateinit var taskID: String
 
     override fun call(): Int {
-        ecsController.stopTask(taskID)
-        println("vehicle terminated!")
-        return 0
+        val result = ecsController.stopTask(taskID)
+        if (result == 0) {
+            println("vehicles terminated!")
+        } else {
+            println("Failed to terminate vehicles")
+        }
+        return result
     }
 }
