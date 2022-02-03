@@ -1,6 +1,6 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsController
+import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -9,20 +9,20 @@ import org.junit.jupiter.api.Test
 
 internal class LaunchVehiclesTest {
 
-    private val ecsController = mockk<EcsController>()
-    private val command = LaunchVehicles(ecsController)
+    private val ecsTaskManager = mockk<EcsTaskManager>()
+    private val command = LaunchVehicles(ecsTaskManager)
 
     @Test
     fun call() {
         command.simulationPackageUrl = "simulation-package-test-url"
 
         every {
-            ecsController.runTask(any())
-        } returns "launched"
+            ecsTaskManager.runTasks(any())
+        } returns arrayOf("Task1", "Task2")
 
         val result = command.call()
 
         Assertions.assertEquals(0, result)
-        verify(exactly = 1) { ecsController.runTask(command.simulationPackageUrl) }
+        verify(exactly = 1) { ecsTaskManager.runTasks(command.simulationPackageUrl) }
     }
 }

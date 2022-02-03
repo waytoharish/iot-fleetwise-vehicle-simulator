@@ -1,6 +1,6 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsController
+import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
 import picocli.CommandLine
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ecs.EcsClient
@@ -10,17 +10,17 @@ import java.util.concurrent.Callable
     name = "StopVehicles",
     description = ["Stop Virtual Vehicles and start simulation"],
 )
-class StopVehicles(private val ecsController: EcsController) : Callable<Int> {
+class StopVehicles(private val ecsTaskManager: EcsTaskManager) : Callable<Int> {
 
     constructor() : this(
-        EcsController(EcsClient.builder().region(Region.US_WEST_2).build())
+        EcsTaskManager(EcsClient.builder().region(Region.US_WEST_2).build())
     )
 
     @CommandLine.Option(required = true, names = ["--taskID", "-t"])
-    lateinit var taskID: String
+    lateinit var taskArnList: Array<String>
 
     override fun call(): Int {
-        val result = ecsController.stopTask(taskID)
+        val result = ecsTaskManager.stopTasks(taskArnList)
         if (result == 0) {
             println("vehicles terminated!")
         } else {

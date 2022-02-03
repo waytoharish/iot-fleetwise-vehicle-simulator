@@ -1,6 +1,6 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsController
+import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import software.amazon.awssdk.regions.Region
@@ -11,18 +11,21 @@ import java.util.concurrent.Callable
     name = "LaunchVehicles",
     description = ["Launch Virtual Vehicles and start simulation"],
 )
-class LaunchVehicles(private val ecsController: EcsController) : Callable<Int> {
+class LaunchVehicles(private val ecsTaskManager: EcsTaskManager) : Callable<Int> {
 
     constructor() : this(
-        EcsController(EcsClient.builder().region(Region.US_WEST_2).build())
+        EcsTaskManager(EcsClient.builder().region(Region.US_WEST_2).build())
     )
 
     @CommandLine.Option(required = true, names = ["--simulation-package-url", "-s"])
     lateinit var simulationPackageUrl: String
 
     override fun call(): Int {
-        val taskArn = ecsController.runTask(simulationPackageUrl)
-        println("vehicle launched! Task arn: $taskArn")
+        val taskArnList = ecsTaskManager.runTasks(simulationPackageUrl)
+        println("vehicle launched!")
+        taskArnList.forEach {
+            println("$it")
+        }
         return 0
     }
 }

@@ -1,6 +1,6 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsController
+import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -9,20 +9,20 @@ import org.junit.jupiter.api.Test
 
 internal class StopVehiclesTest {
 
-    private val ecsController = mockk<EcsController>()
-    private val command = StopVehicles(ecsController)
+    private val ecsTaskManager = mockk<EcsTaskManager>()
+    private val command = StopVehicles(ecsTaskManager)
 
     @Test
     fun call() {
-        command.taskID = "test-task-id"
+        command.taskArnList = arrayOf("test-task-id")
 
         every {
-            ecsController.stopTask(any())
+            ecsTaskManager.stopTasks(any())
         } returns 0
 
         val result = command.call()
 
         Assertions.assertEquals(0, result)
-        verify(exactly = 1) { ecsController.stopTask(command.taskID) }
+        verify(exactly = 1) { ecsTaskManager.stopTasks(command.taskArnList) }
     }
 }

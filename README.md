@@ -11,12 +11,35 @@ The following diagram illustrates a high-level architecture of the system.
 ## Build
 `brazil-build`
 
+## Simulation Package
+simulation package is used to inject virtual ECU data to vehicles. It should contains the following folder structure
+```
+Top Folder
+    |_ car1
+        |_ private key
+        |_ certificate
+        |_ config.json
+        |_ sim
+            |_ simulation scripts
+
+```
+The Top folder url should be supplied to `LaunchVehicles` command
+
+## Init
+Refresh AWS credential
+```
+ada credentials update --account 763496144766 --role Admin --once
+```
+
 ## Create Vehicles
-1. Refresh AWS credential
-`ada credentials update --account 763496144766 --role Admin --once`
-2. Run brazil runtime exec
-`brazil-runtime-exec vehicle-simulator LaunchVehicles -s s3://fwe-simulator-poc/simulation/`
+Use option `LaunchVehicles` with `-s` followed by simulation package url 
+```
+brazil-runtime-exec vehicle-simulator LaunchVehicles -s s3://fwe-simulator-poc/simulation/
+```
 
 ## Stop Vehicles
-
+Use option `StopVehicles` and supply task ID following `-t`. If there's multiple task IDs, use multiple `-t`
+```
+brazil-runtime-exec vehicle-simulator StopVehicles -t task1 -t task2 -t task3
+```
 
