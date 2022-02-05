@@ -11,21 +11,20 @@ import java.util.concurrent.Callable
     name = "LaunchVehicles",
     description = ["Launch Virtual Vehicles and start simulation"],
 )
-class LaunchVehicles(private val ecsTaskManager: EcsTaskManager) : Callable<Int> {
-
-    constructor() : this(
-        EcsTaskManager(EcsClient.builder().region(Region.US_WEST_2).build())
-    )
+class LaunchVehicles() : Callable<Int> {
 
     @CommandLine.Option(required = true, names = ["--simulation-package-url", "-s"])
     lateinit var simulationPackageUrl: String
+    @CommandLine.Option(required = true, names = ["--region", "-r"])
+    lateinit var region: String
 
     override fun call(): Int {
+        val ecsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build())
         val taskArnList = ecsTaskManager.runTasks(simulationPackageUrl)
-        println("vehicle launched!")
         taskArnList.forEach {
-            println("$it")
+            println("Task created: $it")
         }
+        println("Vehicles launched with simulation package: $simulationPackageUrl")
         return 0
     }
 }

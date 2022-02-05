@@ -8,24 +8,28 @@ import java.util.concurrent.Callable
 
 @CommandLine.Command(
     name = "StopVehicles",
-    description = ["Stop Virtual Vehicles and start simulation"],
+    description = ["Stop Virtual Vehicles"],
 )
-class StopVehicles(private val ecsTaskManager: EcsTaskManager) : Callable<Int> {
-
-    constructor() : this(
-        EcsTaskManager(EcsClient.builder().region(Region.US_WEST_2).build())
-    )
+class StopVehicles() : Callable<Int> {
 
     @CommandLine.Option(required = true, names = ["--taskID", "-t"])
-    lateinit var taskArnList: Array<String>
+    lateinit var taskIDList: List<String>
+    @CommandLine.Option(required = true, names = ["--region", "-r"])
+    lateinit var region: String
 
     override fun call(): Int {
-        val result = ecsTaskManager.stopTasks(taskArnList)
-        if (result == 0) {
-            println("vehicles terminated!")
-        } else {
-            println("Failed to terminate vehicles")
+        val ecsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build())
+        val stoppedTaskIDList = ecsTaskManager.stopTasks(taskIDList)
+        taskIDList.filter {
+            stoppedTaskIDList.contains(it)
+        }.forEach {
+            println("Stopped task $it")
         }
-        return result
+        taskIDList.filter {
+            !stoppedTaskIDList.contains(it)
+        }.forEach {
+            println("Couldn't stop task $it")
+        }
+        return if (stoppedTaskIDList == taskIDList) 0 else -1
     }
 }

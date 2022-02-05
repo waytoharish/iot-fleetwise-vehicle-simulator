@@ -32,14 +32,14 @@ ada credentials update --account 763496144766 --role Admin --once
 ```
 
 ## Create Vehicles
-Use option `LaunchVehicles` with `-s` followed by simulation package url 
+Use option `LaunchVehicles` with `-s` followed by simulation package url and `-r` followed by region
 ```
-brazil-runtime-exec vehicle-simulator LaunchVehicles -s s3://fwe-simulator-poc/simulation/
+brazil-runtime-exec vehicle-simulator LaunchVehicles -s s3://fwe-simulator-poc/simulation/ -r us-west-2
 ```
 
 ## Stop Vehicles
-Use option `StopVehicles` and supply task ID following `-t`. If there's multiple task IDs, use multiple `-t`
+Use option `StopVehicles` and supply task ID following `-t` and `-r` followed by region. If there's multiple task IDs, use multiple `-t`
 ```
-brazil-runtime-exec vehicle-simulator StopVehicles -t task1 -t task2 -t task3
+brazil-runtime-exec vehicle-simulator StopVehicles -t task1 -t task2 -t task3 -r us-west-2
 ```
 
