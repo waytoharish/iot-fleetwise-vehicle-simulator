@@ -15,12 +15,11 @@ import java.time.Duration
  *
  */
 class EcsTaskManager(
-    private var ecsClient: EcsClient,
+    private val ecsClient: EcsClient,
     private val ecsClusterName: String = "default",
     private val ecsLaunchType: String = "EC2",
     private val ecsTaskDefinition: String = "fwe-multi-process",
     private val ecsContainerName: String = "fwe-container",
-    private val ecsEnvName: String = "SIM_PKG_URL"
 ) {
 
     companion object {
@@ -35,7 +34,7 @@ class EcsTaskManager(
         // Memory allocated per FWE process in MiB
         private const val MEM_PER_FWE_PROCESS: Int = 64
 
-        private const val MAX_NUM_OF_VEHICLES_PER_TASK = MAX_MEM_PER_TASK / MEM_PER_FWE_PROCESS
+        const val MAX_NUM_OF_VEHICLES_PER_TASK = MAX_MEM_PER_TASK / MEM_PER_FWE_PROCESS
     }
 
     /**
@@ -46,13 +45,17 @@ class EcsTaskManager(
      *
      * Note this function assume cluster and task definition has been setup previously
      */
-    public fun runTasks(simulationPackageUrl: String): List<String> {
+    public fun runTasks(vehicleSimulation: Map<String, String>): List<String> {
         // TODO: Add Sanity check on simulation package url.
         // First, we need to calculate how much CPU and Memory to be allocated to tasks
-        val (taskCount, taskCpu, taskMemory) = calculateComputingResource(processSimulationPackages(simulationPackageUrl))
+        val (taskCount, taskCpu, taskMemory) = calculateComputingResource(vehicleSimulation.size)
         println("task count: $taskCount, each task cpu: $taskCpu, each task memory: $taskMemory")
 
-        val envList = mutableListOf<KeyValuePair>(KeyValuePair.builder().name(ecsEnvName).value(simulationPackageUrl).build())
+        // TODO: (IoTAutobahn-2550) For large fleet simulation, the envList needs to be divided into chunks
+        val envList = mutableListOf<KeyValuePair>(
+            KeyValuePair.builder().name("VEHICLE_ID_LIST").value(vehicleSimulation.map { it.key }.toString().filterNot { it.isWhitespace() }).build(),
+            KeyValuePair.builder().name("SIM_URL_LIST").value(vehicleSimulation.map { it.value }.toString().filterNot { it.isWhitespace() }).build()
+        )
         val containerOverride = ContainerOverride.builder().environment(envList).name(ecsContainerName).cpu(taskCpu).memory(taskMemory).build()
         val taskOverride = TaskOverride.builder().containerOverrides(mutableListOf(containerOverride)).cpu(taskCpu.toString()).memory(taskMemory.toString()).build()
 
@@ -143,24 +146,14 @@ class EcsTaskManager(
     }
 
     /**
-     * This function take simulation package url as input and iterate through the folder structure
-     * to assign group of vehicles to each task based on maximum load of task
-     */
-    private fun processSimulationPackages(simulationPackageUrl: String): Int {
-        // TODO: Iterate through Simulation Package and divide vehicles into chunks
-        //       based on maximum number of vehicles each task can handle
-        return 4
-    }
-
-    /**
      * This function calculate the number of tasks and task cpu, memory allocation based on number of vehicles
      */
     private fun calculateComputingResource(numOfVehicles: Int): Triple<Int, Int, Int> {
-        var taskCount: Int = numOfVehicles / MAX_NUM_OF_VEHICLES_PER_TASK + 1
+        val taskCount: Int = numOfVehicles / MAX_NUM_OF_VEHICLES_PER_TASK + 1
         // If only one task is required, we set the task CPU, Memory based on number of vehicles
         // Otherwise, the task will use maximum CPU and Memory
-        var taskCpu: Int = if (taskCount == 1) (numOfVehicles * CPU_PER_FWE_PROCESS).coerceAtLeast(128) else MAX_CPU_PER_TASK
-        var taskMemory: Int = if (taskCount == 1) numOfVehicles * MEM_PER_FWE_PROCESS else MAX_MEM_PER_TASK
+        val taskCpu: Int = if (taskCount == 1) (numOfVehicles * CPU_PER_FWE_PROCESS).coerceAtLeast(128) else MAX_CPU_PER_TASK
+        val taskMemory: Int = if (taskCount == 1) numOfVehicles * MEM_PER_FWE_PROCESS else MAX_MEM_PER_TASK
 
         return Triple(taskCount, taskCpu, taskMemory)
     }

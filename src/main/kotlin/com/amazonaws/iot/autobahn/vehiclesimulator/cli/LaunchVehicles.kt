@@ -20,7 +20,15 @@ class LaunchVehicles() : Callable<Int> {
 
     override fun call(): Int {
         val ecsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build())
-        val taskArnList = ecsTaskManager.runTasks(simulationPackageUrl)
+        // TODO: Ingest simulation definition from input to generate map of vehicle ID to simulation package url.
+        // Below hard code map is temporarily in absence of module above
+        val simulationMapping = mapOf<String, String>(
+            "kfarm_v2_poc_car1" to "s3://fwe-simulator-poc/simulation/car1",
+            "kfarm_v2_poc_car2" to "s3://fwe-simulator-poc/simulation/car2",
+            "kfarm_v2_poc_car3" to "s3://fwe-simulator-poc/simulation/car3",
+            "kfarm_v2_poc_car4" to "s3://fwe-simulator-poc/simulation/car4",
+        )
+        val taskArnList = ecsTaskManager.runTasks(simulationMapping)
         taskArnList.forEach {
             println("Task created: $it")
         }

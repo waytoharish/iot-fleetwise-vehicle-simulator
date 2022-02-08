@@ -25,6 +25,12 @@ internal class LaunchVehiclesTest {
         val result = command.call()
 
         Assertions.assertEquals(0, result)
-        verify(exactly = 1) { anyConstructed<EcsTaskManager>().runTasks(command.simulationPackageUrl) }
+        val simulationMapping = mapOf<String, String>(
+            "kfarm_v2_poc_car1" to "s3://fwe-simulator-poc/simulation/car1",
+            "kfarm_v2_poc_car2" to "s3://fwe-simulator-poc/simulation/car2",
+            "kfarm_v2_poc_car3" to "s3://fwe-simulator-poc/simulation/car3",
+            "kfarm_v2_poc_car4" to "s3://fwe-simulator-poc/simulation/car4",
+        )
+        verify(exactly = 1) { anyConstructed<EcsTaskManager>().runTasks(simulationMapping) }
     }
 }
