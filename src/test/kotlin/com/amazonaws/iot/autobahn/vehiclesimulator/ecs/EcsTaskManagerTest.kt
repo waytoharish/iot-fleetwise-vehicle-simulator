@@ -7,6 +7,7 @@ import io.mockk.spyk
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.core.internal.waiters.ResponseOrException.response
 import software.amazon.awssdk.core.waiters.WaiterOverrideConfiguration
 import software.amazon.awssdk.core.waiters.WaiterResponse
@@ -22,6 +23,7 @@ import software.amazon.awssdk.services.ecs.model.StopTaskRequest
 import software.amazon.awssdk.services.ecs.model.StopTaskResponse
 import software.amazon.awssdk.services.ecs.model.Task
 import java.util.function.Consumer
+import kotlin.math.max
 
 internal class EcsTaskManagerTest {
 
@@ -31,26 +33,38 @@ internal class EcsTaskManagerTest {
 
     private val waiter = mockk<WaiterResponse<DescribeTasksResponse>>()
 
-    private val smallFleetSimulation = mapOf<String, String>(
+    private val oneVehicleSimulation = mapOf(
+        "car1" to "sim-url-for-car1"
+    )
+
+    private val smallFleetSimulation = mapOf(
         "car1" to "sim-url-for-car1",
         "car2" to "sim-url-for-car2",
         "car3" to "sim-url-for-car3",
         "car4" to "sim-url-for-car4"
     )
+
+    // Large Fleet Testing intend to exercise ecsClient API call at least 3 loops
+    private val maxNumOfTasksPerBatch = max(
+        EcsTaskManager.MAX_TASK_PER_RUN_TASK_REQUEST,
+        EcsTaskManager.MAX_TASK_PER_WAIT_TASK
+    )
+    private val largeFleetSize = maxNumOfTasksPerBatch * 2 + 1
+
     // Below create a large fleet vehicle input with MAX_NUM_OF_VEHICLES_PER_TASK + 1 of vehicles
-    private val largeFleetSimulation: Map<String, String> = (1..EcsTaskManager.MAX_NUM_OF_VEHICLES_PER_TASK + 1)
-        .map { it.toString() }
+    private val largeFleetSimulation: Map<String, String> = (1..largeFleetSize)
+        .map { "car$it".toString() }
         .zip(
-            (1..EcsTaskManager.MAX_NUM_OF_VEHICLES_PER_TASK + 1)
-                .map { it.toString() }
+            (1..largeFleetSize)
+                .map { "s3://car$it".toString() }
         ).toMap()
 
     @Test
     fun `when runTasks with invoking ecsClient to run one tasks`() {
-        val expectedTaskArnList = listOf<String>("test-task-1")
+        val expectedTaskArnList = listOf("test-task-1")
         val newTasks = expectedTaskArnList.map {
             Task.builder().taskArn(it).lastStatus("RUNNING").build()
-        }.toMutableList()
+        }
 
         every {
             waiter.attemptsExecuted()
@@ -71,14 +85,13 @@ internal class EcsTaskManagerTest {
             ecsClient.waiter().waitUntilTasksRunning(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
         } returns waiter
 
-        val returnedTaskArnList = ecsTaskManager.runTasks(smallFleetSimulation)
+        val returnedTaskArnList = ecsTaskManager.runTasks(oneVehicleSimulation)
 
         val requestedTaskCount = runTaskRequestList.map {
             val builder = RunTaskRequest.builder()
             it.accept(builder)
             builder.build().count()
         }[0]
-        // As there's only 4 vehicles, only 1 task will be generated
         Assertions.assertEquals(1, requestedTaskCount)
 
         val requestedVehicleIDList = runTaskRequestList.map {
@@ -86,18 +99,16 @@ internal class EcsTaskManagerTest {
             it.accept(builder)
             builder.build().overrides().containerOverrides()[0].environment()[0]
         }[0]
-        // As there's only 4 vehicles, only 1 task will be generated
-        Assertions.assertEquals("VEHICLE_ID_LIST", requestedVehicleIDList.name())
-        Assertions.assertEquals("[car1,car2,car3,car4]", requestedVehicleIDList.value())
+        Assertions.assertEquals("VEHICLE_ID", requestedVehicleIDList.name())
+        Assertions.assertEquals("car1", requestedVehicleIDList.value())
 
         val requestedSimulationUrlList = runTaskRequestList.map {
             val builder = RunTaskRequest.builder()
             it.accept(builder)
             builder.build().overrides().containerOverrides()[0].environment()[1]
         }[0]
-        // As there's only 4 vehicles, only 1 task will be generated
-        Assertions.assertEquals("SIM_URL_LIST", requestedSimulationUrlList.name())
-        Assertions.assertEquals("[sim-url-for-car1,sim-url-for-car2,sim-url-for-car3,sim-url-for-car4]", requestedSimulationUrlList.value())
+        Assertions.assertEquals("SIM_PKG_URL", requestedSimulationUrlList.name())
+        Assertions.assertEquals("sim-url-for-car1", requestedSimulationUrlList.value())
 
         val describeTaskRequestTaskList = describeTaskRequestList.map {
             val builder = DescribeTasksRequest.builder()
@@ -134,11 +145,33 @@ internal class EcsTaskManagerTest {
     }
 
     @Test
-    fun `when runTasks called with ecsClient waiter raise exceptions`() {
-        val expectedTaskArnList = listOf<String>("test-task-1", "test-task-2")
-        val newTasks = expectedTaskArnList.map {
+    fun `when runTasks called with ecsClient runTaskResponse contain incorrect number of tasks`() {
+        val newTasks = listOf<String>().map {
             Task.builder().taskArn(it).lastStatus("RUNNING").build()
-        }.toMutableList()
+        }
+
+        val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
+        every {
+            ecsClient.runTask(capture(runTaskRequestList))
+        } returns RunTaskResponse.builder().tasks(newTasks).build()
+
+        // The RunTaskResponse returns 0 task instead of 1. We shall expect an exception being thrown
+        assertThrows<EcsTaskManagerException> { ecsTaskManager.runTasks(oneVehicleSimulation) }
+
+        val requestedTaskCount = runTaskRequestList.map {
+            val builder = RunTaskRequest.builder()
+            it.accept(builder)
+            builder.build().count()
+        }[0]
+        Assertions.assertEquals(1, requestedTaskCount)
+    }
+
+    @Test
+    fun `when runTasks called with ecsClient waiter raise exceptions`() {
+        val expectedTaskArnList = listOf("task1")
+        val newTasks = expectedTaskArnList.map {
+            Task.builder().taskArn(it).lastStatus("PENDING").build()
+        }
 
         val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
         every {
@@ -147,11 +180,16 @@ internal class EcsTaskManagerTest {
 
         val describeTaskRequestList = mutableListOf<Consumer<DescribeTasksRequest.Builder>>()
         val waiterOverrideConfigList = mutableListOf<Consumer<WaiterOverrideConfiguration.Builder>>()
-        every {
-            ecsClient.waiter().waitUntilTasksRunning(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
-        } throws UnsupportedOperationException()
-        assertThrows<EcsTaskManagerException> {
-            ecsTaskManager.runTasks(largeFleetSimulation)
+        listOf<Exception>(
+            UnsupportedOperationException(),
+            SdkClientException.builder().build()
+        ).map {
+            every {
+                ecsClient.waiter().waitUntilTasksRunning(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
+            } throws it
+            assertThrows<EcsTaskManagerException> {
+                ecsTaskManager.runTasks(smallFleetSimulation)
+            }
         }
     }
 
@@ -159,12 +197,6 @@ internal class EcsTaskManagerTest {
     // RunTaskResponse mismatch with expected task list
     @Test
     fun `when runTasks called with only partial tasks running after wait timeout`() {
-        val expectedTaskArnList = listOf<String>("task1", "task2")
-        val newTasks = mutableListOf<Task>(
-            Task.builder().taskArn("task1").lastStatus("PENDING").build(),
-            Task.builder().taskArn("task2").lastStatus("PENDING").build()
-        )
-
         // mock Task2 never turn RUNNING
         every {
             waiter.attemptsExecuted()
@@ -173,19 +205,40 @@ internal class EcsTaskManagerTest {
             waiter.matched()
         } returns response(
             DescribeTasksResponse.builder().tasks(
-                listOf<Task>(
-                    Task.builder().taskArn("task1").lastStatus("RUNNING").build(),
-                    Task.builder().taskArn("task2").lastStatus("STOPPED").build()
+                (1..maxNumOfTasksPerBatch).map {
+                    Task.builder().taskArn("task$it").lastStatus("RUNNING").build()
+                }
+            ).build()
+        ) andThen response(
+            DescribeTasksResponse.builder().tasks(
+                (maxNumOfTasksPerBatch + 1..maxNumOfTasksPerBatch * 2).map {
+                    Task.builder().taskArn("task$it").lastStatus("RUNNING").build()
+                }
+            ).build()
+        ) andThen response(
+            DescribeTasksResponse.builder().tasks(
+                listOf(
+                    // Here we mock the last task still shown as PENDING when waiter return
+                    Task.builder().taskArn("task$largeFleetSize").lastStatus("PENDING").build()
                 )
             ).build()
         )
 
         val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
-
         every {
             ecsClient.runTask(capture(runTaskRequestList))
-        } returns RunTaskResponse.builder().tasks(newTasks).build()
-
+        } returns RunTaskResponse
+            .builder()
+            .tasks(
+                listOf(
+                    Task.builder().taskArn("task1").lastStatus("PENDING").build()
+                )
+            ).build() andThenMany
+            (2..largeFleetSize).map {
+                RunTaskResponse.builder().tasks(
+                    Task.builder().taskArn("task$it").lastStatus("PENDING").build()
+                ).build()
+            }
         val describeTaskRequestList = mutableListOf<Consumer<DescribeTasksRequest.Builder>>()
         val waiterOverrideConfigList = mutableListOf<Consumer<WaiterOverrideConfiguration.Builder>>()
         every {
@@ -193,22 +246,23 @@ internal class EcsTaskManagerTest {
         } returns waiter
 
         val returnedTaskArnList = ecsTaskManager.runTasks(largeFleetSimulation)
-        Assertions.assertTrue(listOf<String>("task1") == returnedTaskArnList)
+        Assertions.assertTrue((1 until largeFleetSize).map { "task$it" } == returnedTaskArnList)
 
         val requestedTaskCount = runTaskRequestList.map {
             val builder = RunTaskRequest.builder()
             it.accept(builder)
             builder.build().count()
         }[0]
-        // As there's only 4 vehicles, only 1 task will be generated
-        Assertions.assertEquals(2, requestedTaskCount)
+        Assertions.assertEquals(1, requestedTaskCount)
 
         val describeTaskRequestTaskList = describeTaskRequestList.map {
             val builder = DescribeTasksRequest.builder()
             it.accept(builder)
             builder.build().tasks()
-        }[0]
-        Assertions.assertEquals(expectedTaskArnList, describeTaskRequestTaskList)
+        }
+        Assertions.assertEquals((1..maxNumOfTasksPerBatch).map { "task$it" }, describeTaskRequestTaskList[0])
+        Assertions.assertEquals((maxNumOfTasksPerBatch + 1..maxNumOfTasksPerBatch * 2).map { "task$it" }, describeTaskRequestTaskList[1])
+        Assertions.assertEquals((maxNumOfTasksPerBatch * 2 + 1 until maxNumOfTasksPerBatch * 2 + 2).map { "task$it" }, describeTaskRequestTaskList[2])
 
         val actualWaiterOverrideConfig = waiterOverrideConfigList.map {
             val builder = WaiterOverrideConfiguration.builder()
@@ -220,14 +274,30 @@ internal class EcsTaskManagerTest {
 
     @Test
     fun `when stopTasks called with ECS tasks successfully STOPPED`() {
-        val inputTaskIDList = listOf("task1", "task2", "task3", "task4", "task5")
-        val taskList = inputTaskIDList.map {
-            Task.builder().taskArn(it).lastStatus("STOPPED").build()
-        }.toSet()
+        val inputTaskIDList = (1..largeFleetSize).map { "task$it" }
 
         every {
             waiter.matched()
-        } returns response(DescribeTasksResponse.builder().tasks(taskList).build())
+        } returns response(
+            DescribeTasksResponse.builder().tasks(
+                (1..maxNumOfTasksPerBatch).map {
+                    Task.builder().taskArn("task$it").lastStatus("STOPPED").build()
+                }
+            ).build()
+        ) andThen response(
+            DescribeTasksResponse.builder().tasks(
+                (maxNumOfTasksPerBatch + 1..maxNumOfTasksPerBatch * 2).map {
+                    Task.builder().taskArn("task$it").lastStatus("STOPPED").build()
+                }
+            ).build()
+        ) andThen response(
+            DescribeTasksResponse.builder().tasks(
+                listOf(
+                    // Here we mock the last task still shown as PENDING when waiter return
+                    Task.builder().taskArn("task$largeFleetSize").lastStatus("STOPPED").build()
+                )
+            ).build()
+        )
 
         val stopTaskRequestList = mutableListOf<Consumer<StopTaskRequest.Builder>>()
         every {
@@ -255,7 +325,9 @@ internal class EcsTaskManagerTest {
             it.accept(builder)
             builder.build().tasks()
         }
-        Assertions.assertEquals(inputTaskIDList, describeTaskRequestTaskList[0])
+        Assertions.assertEquals((1..maxNumOfTasksPerBatch).map { "task$it" }, describeTaskRequestTaskList[0])
+        Assertions.assertEquals((maxNumOfTasksPerBatch + 1..maxNumOfTasksPerBatch * 2).map { "task$it" }, describeTaskRequestTaskList[1])
+        Assertions.assertEquals((maxNumOfTasksPerBatch * 2 + 1 until maxNumOfTasksPerBatch * 2 + 2).map { "task$it" }, describeTaskRequestTaskList[2])
 
         val actualWaiterOverrideConfig = waiterOverrideConfigList.map {
             val builder = WaiterOverrideConfiguration.builder()
@@ -358,10 +430,14 @@ internal class EcsTaskManagerTest {
 
         val describeTaskRequestList = mutableListOf<Consumer<DescribeTasksRequest.Builder>>()
         val waiterOverrideConfigList = mutableListOf<Consumer<WaiterOverrideConfiguration.Builder>>()
-        every {
-            ecsClient.waiter().waitUntilTasksStopped(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
-        } throws UnsupportedOperationException()
-
-        assertThrows<EcsTaskManagerException> { ecsTaskManager.stopTasks(inputTaskIDList) }
+        listOf<Exception>(
+            UnsupportedOperationException(),
+            SdkClientException.builder().build()
+        ).map {
+            every {
+                ecsClient.waiter().waitUntilTasksStopped(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
+            } throws it
+            assertThrows<EcsTaskManagerException> { ecsTaskManager.stopTasks(inputTaskIDList) }
+        }
     }
 }
