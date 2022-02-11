@@ -4,10 +4,12 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.EcsTaskManagerExce
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.AccessDeniedException
+import software.amazon.awssdk.services.ecs.model.CapacityProviderStrategyItem
 import software.amazon.awssdk.services.ecs.model.ClusterNotFoundException
 import software.amazon.awssdk.services.ecs.model.ContainerOverride
 import software.amazon.awssdk.services.ecs.model.InvalidParameterException
 import software.amazon.awssdk.services.ecs.model.KeyValuePair
+import software.amazon.awssdk.services.ecs.model.RunTaskRequest
 import software.amazon.awssdk.services.ecs.model.TaskOverride
 import java.time.Duration
 
@@ -17,10 +19,7 @@ import java.time.Duration
  */
 class EcsTaskManager(
     private val ecsClient: EcsClient,
-    private val ecsClusterName: String = "default",
-    private val ecsLaunchType: String = "EC2",
-    private val ecsTaskDefinition: String = "fwe-with-cloudwatch-logging:7",
-    private val ecsContainerName: String = "fwe-container",
+    private val ecsClusterName: String = "default"
 ) {
     companion object {
         // Below we define the CPU and Memory allocation for each FWE Process. Note this part are subject to future changes
@@ -45,11 +44,17 @@ class EcsTaskManager(
      * The function won't return until task last status is running or timeout or exception
      * If no exception thrown, the function return a list of taskArn of running tasks
      *
-     * Note this function assume cluster and task definition has been setup previously
+     * Note this function assume cluster and task definition has been set up previously
      */
-    public fun runTasks(
+    fun runTasks(
         vehicleSimulationMap: Map<String, String>,
-        timeout: Duration = Duration.ofMinutes(5)
+        ecsTaskDefinition: String = "fwe-with-cloudwatch-logging:7",
+        ecsContainerName: String = "fwe-container",
+        useCapacityProvider: Boolean = true,
+        ecsLaunchType: String = "EC2",
+        ecsCapacityProviderName: String = "fwe_simulator_ubuntu",
+        waiterTimeout: Duration = Duration.ofMinutes(5),
+        waiterRetries: Int = 100
     ): List<String> {
         val pendingTaskArnList = mutableListOf<String>()
         // Here we create Task per Vehicle.
@@ -65,20 +70,31 @@ class EcsTaskManager(
                 .cpu(CPU_PER_FWE_PROCESS)
                 .memory(MEM_PER_FWE_PROCESS)
                 .build()
+            // Build the task override
             val taskOverride = TaskOverride.builder()
                 .containerOverrides(mutableListOf(containerOverride))
                 .cpu(CPU_PER_FWE_PROCESS.toString())
                 .memory(MEM_PER_FWE_PROCESS.toString())
                 .build()
+            // Check whether we want to use Capacity Provider. If not, use "EC2" as launch type
+            val taskBuilder = if (useCapacityProvider)
+                RunTaskRequest.builder()
+                    .capacityProviderStrategy(
+                        CapacityProviderStrategyItem.builder()
+                            .capacityProvider(ecsCapacityProviderName)
+                            .build()
+                    )
+            else
+                RunTaskRequest.builder()
+                    .launchType(ecsLaunchType)
+            // Build the runTaskRequest
+            val runTaskRequest = taskBuilder
+                .count(1)
+                .taskDefinition(ecsTaskDefinition)
+                .overrides(taskOverride)
+                .build()
             val taskArnList = try {
-                ecsClient.runTask { builder ->
-                    builder.cluster(ecsClusterName)
-                        .count(1)
-                        .taskDefinition(ecsTaskDefinition)
-                        .launchType(ecsLaunchType)
-                        .overrides(taskOverride)
-                        .build()
-                }.tasks().map { it.taskArn() }
+                ecsClient.runTask(runTaskRequest).tasks().map { it.taskArn() }
             } catch (ex: ClusterNotFoundException) {
                 throw EcsTaskManagerException("Cluster Not Found Exception", ex)
             } catch (ex: InvalidParameterException) {
@@ -110,7 +126,7 @@ class EcsTaskManager(
                                 .tasks(it)
                                 .build()
                         },
-                        { builder -> builder.waitTimeout(timeout).build() }
+                        { builder -> builder.waitTimeout(waiterTimeout).maxAttempts(waiterRetries).build() }
                     )
                 } catch (ex: UnsupportedOperationException) {
                     throw EcsTaskManagerException("UnsupportedOperationException raised while waiting for all tasks running", ex)
@@ -131,11 +147,12 @@ class EcsTaskManager(
      * The function won't return until task last status is stopped or timeout or thrown exception
      * The function return list of stopped tasks
      *
-     * Note this function assume cluster has been setup previously
+     * Note this function assume cluster has been set up previously
      */
-    public fun stopTasks(
+    fun stopTasks(
         taskIDList: List<String>,
-        timeout: Duration = Duration.ofMinutes(5)
+        waiterTimeout: Duration = Duration.ofMinutes(5),
+        waiterRetries: Int = 100
     ): List<String> {
         taskIDList.forEach {
             try {
@@ -170,7 +187,7 @@ class EcsTaskManager(
                                 .build()
                         },
                         { builder ->
-                            builder.waitTimeout(timeout).build()
+                            builder.waitTimeout(waiterTimeout).maxAttempts(waiterRetries).build()
                         }
                     )
                 } catch (ex: UnsupportedOperationException) {

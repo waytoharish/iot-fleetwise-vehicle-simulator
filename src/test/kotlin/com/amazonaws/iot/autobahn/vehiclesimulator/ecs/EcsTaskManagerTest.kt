@@ -3,7 +3,9 @@ package com.amazonaws.iot.autobahn.vehiclesimulator.ecs
 import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.EcsTaskManagerException
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.spyk
+import io.mockk.verify
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -53,14 +55,14 @@ internal class EcsTaskManagerTest {
 
     // Below create a large fleet vehicle input with MAX_NUM_OF_VEHICLES_PER_TASK + 1 of vehicles
     private val largeFleetSimulation: Map<String, String> = (1..largeFleetSize)
-        .map { "car$it".toString() }
+        .map { "car$it" }
         .zip(
             (1..largeFleetSize)
-                .map { "s3://car$it".toString() }
+                .map { "s3://car$it" }
         ).toMap()
 
     @Test
-    fun `when runTasks with invoking ecsClient to run one tasks`() {
+    fun `when runTasks with invoking ecsClient to run one tasks with capacity provider`() {
         val expectedTaskArnList = listOf("test-task-1")
         val newTasks = expectedTaskArnList.map {
             Task.builder().taskArn(it).lastStatus("RUNNING").build()
@@ -73,7 +75,7 @@ internal class EcsTaskManagerTest {
             waiter.matched()
         } returns response(DescribeTasksResponse.builder().tasks(newTasks).build())
 
-        val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
+        val runTaskRequestList = slot<RunTaskRequest>()
 
         every {
             ecsClient.runTask(capture(runTaskRequestList))
@@ -86,30 +88,12 @@ internal class EcsTaskManagerTest {
         } returns waiter
 
         val returnedTaskArnList = ecsTaskManager.runTasks(oneVehicleSimulation)
-
-        val requestedTaskCount = runTaskRequestList.map {
-            val builder = RunTaskRequest.builder()
-            it.accept(builder)
-            builder.build().count()
-        }[0]
-        Assertions.assertEquals(1, requestedTaskCount)
-
-        val requestedVehicleIDList = runTaskRequestList.map {
-            val builder = RunTaskRequest.builder()
-            it.accept(builder)
-            builder.build().overrides().containerOverrides()[0].environment()[0]
-        }[0]
-        Assertions.assertEquals("VEHICLE_ID", requestedVehicleIDList.name())
-        Assertions.assertEquals("car1", requestedVehicleIDList.value())
-
-        val requestedSimulationUrlList = runTaskRequestList.map {
-            val builder = RunTaskRequest.builder()
-            it.accept(builder)
-            builder.build().overrides().containerOverrides()[0].environment()[1]
-        }[0]
-        Assertions.assertEquals("SIM_PKG_URL", requestedSimulationUrlList.name())
-        Assertions.assertEquals("sim-url-for-car1", requestedSimulationUrlList.value())
-
+        Assertions.assertEquals(1, runTaskRequestList.captured.count())
+        Assertions.assertEquals("VEHICLE_ID", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].name())
+        Assertions.assertEquals("car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].value())
+        Assertions.assertEquals("SIM_PKG_URL", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].name())
+        Assertions.assertEquals("sim-url-for-car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].value())
+        Assertions.assertTrue(runTaskRequestList.captured.hasCapacityProviderStrategy())
         val describeTaskRequestTaskList = describeTaskRequestList.map {
             val builder = DescribeTasksRequest.builder()
             it.accept(builder)
@@ -125,11 +109,67 @@ internal class EcsTaskManagerTest {
         Assertions.assertEquals(5, actualWaiterOverrideConfig.get().toMinutes())
 
         Assertions.assertEquals(expectedTaskArnList, returnedTaskArnList)
+
+        verify(exactly = 1) { ecsClient.runTask(any<RunTaskRequest>()) }
+    }
+
+    @Test
+    fun `when runTasks with invoking ecsClient to run one tasks with EC2 launch type`() {
+        val expectedTaskArnList = listOf("test-task-1")
+        val newTasks = expectedTaskArnList.map {
+            Task.builder().taskArn(it).lastStatus("RUNNING").build()
+        }
+
+        every {
+            waiter.attemptsExecuted()
+        } returns 42
+        every {
+            waiter.matched()
+        } returns response(DescribeTasksResponse.builder().tasks(newTasks).build())
+
+        val runTaskRequestList = slot<RunTaskRequest>()
+
+        every {
+            ecsClient.runTask(capture(runTaskRequestList))
+        } returns RunTaskResponse.builder().tasks(newTasks).build()
+
+        val describeTaskRequestList = mutableListOf<Consumer<DescribeTasksRequest.Builder>>()
+        val waiterOverrideConfigList = mutableListOf<Consumer<WaiterOverrideConfiguration.Builder>>()
+        every {
+            ecsClient.waiter().waitUntilTasksRunning(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
+        } returns waiter
+        // Invoke runTask with "EC2" as launch type
+        val returnedTaskArnList = ecsTaskManager.runTasks(oneVehicleSimulation, useCapacityProvider = false)
+        Assertions.assertEquals(1, runTaskRequestList.captured.count())
+        Assertions.assertEquals("VEHICLE_ID", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].name())
+        Assertions.assertEquals("car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].value())
+        Assertions.assertEquals("SIM_PKG_URL", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].name())
+        Assertions.assertEquals("sim-url-for-car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].value())
+        // We shall expect no capacity provider is used.
+        Assertions.assertFalse(runTaskRequestList.captured.hasCapacityProviderStrategy())
+        Assertions.assertEquals("EC2", runTaskRequestList.captured.launchTypeAsString())
+        val describeTaskRequestTaskList = describeTaskRequestList.map {
+            val builder = DescribeTasksRequest.builder()
+            it.accept(builder)
+            builder.build().tasks()
+        }[0]
+        Assertions.assertEquals(expectedTaskArnList, describeTaskRequestTaskList)
+
+        val actualWaiterOverrideConfig = waiterOverrideConfigList.map {
+            val builder = WaiterOverrideConfiguration.builder()
+            it.accept(builder)
+            builder.build().waitTimeout()
+        }[0]
+        Assertions.assertEquals(5, actualWaiterOverrideConfig.get().toMinutes())
+
+        Assertions.assertEquals(expectedTaskArnList, returnedTaskArnList)
+
+        verify(exactly = 1) { ecsClient.runTask(any<RunTaskRequest>()) }
     }
 
     @Test
     fun `when runTasks called with ecsClient runTask raise exceptions`() {
-        val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
+        val runTaskRequestList = mutableListOf<RunTaskRequest>()
         listOf<Exception>(
             ClusterNotFoundException.builder().build(),
             InvalidParameterException.builder().build(),
@@ -142,6 +182,8 @@ internal class EcsTaskManagerTest {
                 ecsTaskManager.runTasks(smallFleetSimulation)
             }
         }
+        verify(exactly = 3) { ecsClient.runTask(any<RunTaskRequest>()) }
+        verify(exactly = 0) { ecsClient.waiter().waitUntilTasksRunning(any<DescribeTasksRequest>()) }
     }
 
     @Test
@@ -150,20 +192,13 @@ internal class EcsTaskManagerTest {
             Task.builder().taskArn(it).lastStatus("RUNNING").build()
         }
 
-        val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
         every {
-            ecsClient.runTask(capture(runTaskRequestList))
+            ecsClient.runTask(any<RunTaskRequest>())
         } returns RunTaskResponse.builder().tasks(newTasks).build()
 
-        // The RunTaskResponse returns 0 task instead of 1. We shall expect an exception being thrown
         assertThrows<EcsTaskManagerException> { ecsTaskManager.runTasks(oneVehicleSimulation) }
-
-        val requestedTaskCount = runTaskRequestList.map {
-            val builder = RunTaskRequest.builder()
-            it.accept(builder)
-            builder.build().count()
-        }[0]
-        Assertions.assertEquals(1, requestedTaskCount)
+        verify(exactly = 1) { ecsClient.runTask(any<RunTaskRequest>()) }
+        verify(exactly = 0) { ecsClient.waiter().waitUntilTasksRunning(any<DescribeTasksRequest>()) }
     }
 
     @Test
@@ -173,7 +208,7 @@ internal class EcsTaskManagerTest {
             Task.builder().taskArn(it).lastStatus("PENDING").build()
         }
 
-        val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
+        val runTaskRequestList = mutableListOf<RunTaskRequest>()
         every {
             ecsClient.runTask(capture(runTaskRequestList))
         } returns RunTaskResponse.builder().tasks(newTasks).build()
@@ -224,7 +259,7 @@ internal class EcsTaskManagerTest {
             ).build()
         )
 
-        val runTaskRequestList = mutableListOf<Consumer<RunTaskRequest.Builder>>()
+        val runTaskRequestList = mutableListOf<RunTaskRequest>()
         every {
             ecsClient.runTask(capture(runTaskRequestList))
         } returns RunTaskResponse
@@ -248,12 +283,7 @@ internal class EcsTaskManagerTest {
         val returnedTaskArnList = ecsTaskManager.runTasks(largeFleetSimulation)
         Assertions.assertTrue((1 until largeFleetSize).map { "task$it" } == returnedTaskArnList)
 
-        val requestedTaskCount = runTaskRequestList.map {
-            val builder = RunTaskRequest.builder()
-            it.accept(builder)
-            builder.build().count()
-        }[0]
-        Assertions.assertEquals(1, requestedTaskCount)
+        verify(exactly = largeFleetSize) { ecsClient.runTask(any<RunTaskRequest>()) }
 
         val describeTaskRequestTaskList = describeTaskRequestList.map {
             val builder = DescribeTasksRequest.builder()
