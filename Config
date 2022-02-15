@@ -28,6 +28,7 @@ package.IoTAutobahnVehicleSimulator = {
             Picocli = 4.x;
             AwsJavaSdk-Ecs = 2.0;
             AwsJavaSdk-S3 = 2.0;
+            AwsJavaSdk-Iot = 2.0;
             Maven-com-michael-bull-kotlin-retry_kotlin-retry = 1.x;
         };
     };
