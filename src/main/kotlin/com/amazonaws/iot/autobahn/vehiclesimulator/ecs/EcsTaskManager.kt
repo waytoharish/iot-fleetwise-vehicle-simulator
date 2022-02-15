@@ -37,14 +37,27 @@ class EcsTaskManager(
 
     /**
      * This function interacts with ECS to run tasks hosting virtual vehicles.
-     * [vehicleSimulationMap] is a map containing Vehicle ID to Simulation URL.
-     * e.g: car1: S3://simulation/car1
      * The Key Value Pair is passed through container environment variable.
-     *
      * The function won't return until task last status is running or timeout or exception
-     * If no exception thrown, the function return a list of taskArn of running tasks
      *
      * Note this function assume cluster and task definition has been set up previously
+     *
+     * @param vehicleSimulationMap: A map containing Vehicle ID to Simulation URL.
+     *                              e.g: car1: S3://simulation/car1
+     * @param ecsTaskDefinition: Name of task definition
+     * @param ecsContainerName: Name of Container
+     * @param useCapacityProvider: Boolean flag for if using capacity provider. If not LaunchType will be used
+     * @param ecsLaunchType: Launch Type when not using capacity provider
+     * @param ecsCapacityProviderName: Name for capacity provider
+     * @param waiterTimeout: maximum timeout for ECS waiter to wait for task to run
+     * @param waiterRetries: maximum retries for ECS waiter to wait for task to run
+     * @return a list of running task
+     * @throws EcsTaskManagerException if one of the following exception occurs:
+     * 1) Cluster Not Found
+     * 2) Invalid request
+     * 3) Access Denied
+     * 4) SdkClientException raised from ECS waiter, usually caused by timeout
+     * 5) UnsupportedOperationException raised from ECS waiter
      */
     fun runTasks(
         vehicleSimulationMap: Map<String, String>,
@@ -56,11 +69,10 @@ class EcsTaskManager(
         waiterTimeout: Duration = Duration.ofMinutes(5),
         waiterRetries: Int = 100
     ): List<String> {
-        val pendingTaskArnList = mutableListOf<String>()
         // Here we create Task per Vehicle.
-        vehicleSimulationMap.forEach { vehicleIDToSimUrl ->
+        val pendingTaskArnList = vehicleSimulationMap.flatMap { vehicleIDToSimUrl ->
             // We pass the vehicle ID and simulation URL through environment variable.
-            val envList = mutableListOf<KeyValuePair>(
+            val envList = listOf<KeyValuePair>(
                 KeyValuePair.builder().name("VEHICLE_ID").value(vehicleIDToSimUrl.key).build(),
                 KeyValuePair.builder().name("SIM_PKG_URL").value(vehicleIDToSimUrl.value).build()
             )
@@ -72,7 +84,7 @@ class EcsTaskManager(
                 .build()
             // Build the task override
             val taskOverride = TaskOverride.builder()
-                .containerOverrides(mutableListOf(containerOverride))
+                .containerOverrides(listOf(containerOverride))
                 .cpu(CPU_PER_FWE_PROCESS.toString())
                 .memory(MEM_PER_FWE_PROCESS.toString())
                 .build()
@@ -103,7 +115,7 @@ class EcsTaskManager(
                 throw EcsTaskManagerException("Access Denied Exception", ex)
             }
             if (taskArnList.size == 1) {
-                pendingTaskArnList.add(taskArnList[0])
+                taskArnList
             } else {
                 throw EcsTaskManagerException("RunTaskResponse contains ${taskArnList.size} tasks: $taskArnList")
             }
@@ -111,14 +123,13 @@ class EcsTaskManager(
         // TODO: logging framework will be integrated separately
         println("starting Task: $pendingTaskArnList")
         println("wait for all tasks running")
-        val runningTaskArnList = mutableListOf<String>()
         // Maximum number of tasks per ecsClient waiter is 100.
         // Hence, we need to chunk the large task lists into smaller lists before requesting wait
         // Note although the waiters runs one by one, the loop latency should be small
         // as all the tasks have already been created by runTask in previous step.
-        pendingTaskArnList
+        return pendingTaskArnList
             .chunked(MAX_TASK_PER_WAIT_TASK)
-            .forEach {
+            .flatMap {
                 val waiterResponse = try {
                     ecsClient.waiter().waitUntilTasksRunning(
                         { builder ->
@@ -134,51 +145,62 @@ class EcsTaskManager(
                     throw EcsTaskManagerException("SdkClientException raised while waiting for all tasks running", ex)
                 }
                 // We only return the Task Arns that are successfully running
-                runningTaskArnList += waiterResponse.matched().response().get().tasks().filter {
+                waiterResponse.matched().response().get().tasks().filter {
                     it.lastStatus() == "RUNNING"
                 }.map { it.taskArn() }
-                println("${runningTaskArnList.size} tasks are running")
             }
-        return runningTaskArnList
     }
 
     /**
      * This function take task ID as input. It will interact with ECS to stop the task.
      * The function won't return until task last status is stopped or timeout or thrown exception
-     * The function return list of stopped tasks
-     *
      * Note this function assume cluster has been set up previously
+     *
+     * @param taskIDList: a list of Task ID that client wants to stop
+     * @param waiterTimeout: maximum timeout for ECS waiter to wait for task to stop
+     * @param waiterRetries: maximum retries for ECS waiter to wait for task to stop
+     * @return list of stopped tasks
+     * @throws EcsTaskManagerException: If the one of the following scenario occurs:
+     * 1) Ecs Cluster Not Found
+     * 2) Task failed to stop
+     * 3) SdkClientException raised from ECS waiter, usually caused by timeout
+     * 4) UnsupportedOperationException raised from ECS waiter
      */
     fun stopTasks(
         taskIDList: List<String>,
         waiterTimeout: Duration = Duration.ofMinutes(5),
         waiterRetries: Int = 100
     ): List<String> {
-        taskIDList.forEach {
+        // First get a list of stopping task
+        val stoppingTaskIDs = taskIDList.mapNotNull {
             try {
                 ecsClient.stopTask { builder ->
                     builder.cluster(ecsClusterName)
                         .task(it)
                         .reason("stop the task")
                 }
+                // by the time we got here, the stopTask request has been accepted without exception
+                // add the taskID to stoppingTaskIDs list
+                it
             } catch (ex: ClusterNotFoundException) {
                 throw EcsTaskManagerException("Cluster Not Found Exception for stopping taskID $it", ex)
             } catch (ex: InvalidParameterException) {
-                // Note if the task couldn't be found, it will raise this exception
-                throw EcsTaskManagerException("Invalid Parameter Exception for stopping taskID $it", ex)
+                // Note if one taskID couldn't be found, it will raise this exception. We shall continue the rest
+                // of stopTask request as we want to clean up the tasks as much as we can
+                // In the end of function, we will throw exception if not all tasks are stopped
+                // TODO Logging as Warning
+                println("Invalid Parameter Exception for stopping taskID $it")
+                null
             }
         }
-        // list of task to be stopped
-        val toBeStoppedTaskIDs = taskIDList.toMutableList()
-        val stoppedTaskIDList = mutableListOf<String>()
         println("wait for all tasks to be stopped")
         // Maximum number of tasks per ecsClient waiter is 100.
         // Hence, we need to chunk the large task lists into smaller lists before requesting wait
         // Note although the waiters runs one by one, the loop latency should be small
         // as the stop task requests have been sent out previously.
-        toBeStoppedTaskIDs
+        val stoppedTaskIDs = stoppingTaskIDs
             .chunked(MAX_TASK_PER_WAIT_TASK)
-            .forEach {
+            .flatMap {
                 val waiterResponse = try {
                     ecsClient.waiter().waitUntilTasksStopped(
                         { builder ->
@@ -197,15 +219,20 @@ class EcsTaskManager(
                 }
                 // Check waiter response whether task last status is STOPPED
                 waiterResponse.matched().response().get().tasks().filter {
-                    // We firstly filter by target taskIDList in case response contains non target task ID
-                    taskIDList.contains(it.taskArn().substringAfterLast('/'))
+                    // only include task shown last status as STOPPED
+                    it.lastStatus() == "STOPPED" &&
+                        // Filter by target taskIDList in case response contains non target task ID
+                        taskIDList.contains(it.taskArn().substringAfterLast('/'))
                 }.map {
-                    if (it.lastStatus() == "STOPPED") {
-                        // Task last status is STOPPED. Add it to return list
-                        stoppedTaskIDList.add(it.taskArn().substringAfterLast('/'))
-                    }
+                    it.taskArn().substringAfterLast('/')
                 }
             }
-        return stoppedTaskIDList
+        // Check whether we have tasks that fail to stop
+        val failToStopTaskIDs = taskIDList.filterNot { stoppedTaskIDs.contains(it) }
+        if (failToStopTaskIDs.isNotEmpty()) {
+            // throw exception with a list of fail to stop tasks
+            throw EcsTaskManagerException("Fail to stop task ID: $failToStopTaskIDs")
+        }
+        return stoppedTaskIDs
     }
 }

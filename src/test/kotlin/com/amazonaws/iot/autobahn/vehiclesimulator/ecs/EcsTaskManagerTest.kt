@@ -368,21 +368,24 @@ internal class EcsTaskManagerTest {
     }
 
     @Test
-    fun `when stopTasks called with ecsClient stopTask raise exception`() {
-        val taskIDList = listOf("task1", "task2", "task3", "task4", "task5")
+    fun `when stopTasks called with ecsClient stopTask raise exceptions`() {
+        val taskIDList = listOf("task1", "task2", "task3")
 
         val stopTaskRequestList = mutableListOf<Consumer<StopTaskRequest.Builder>>()
-        listOf<Exception>(
-            ClusterNotFoundException.builder().build(),
-            InvalidParameterException.builder().build()
-        ).map {
-            every {
-                ecsClient.stopTask(capture(stopTaskRequestList))
-            } throws it
-            assertThrows<EcsTaskManagerException> {
-                ecsTaskManager.stopTasks(taskIDList)
-            }
+        every {
+            ecsClient.stopTask(capture(stopTaskRequestList))
+        } throws ClusterNotFoundException.builder().build()
+        assertThrows<EcsTaskManagerException> {
+            ecsTaskManager.stopTasks(taskIDList)
         }
+        every {
+            ecsClient.stopTask(capture(stopTaskRequestList))
+        } throws InvalidParameterException.builder().build()
+        val ex = assertThrows<EcsTaskManagerException> {
+            ecsTaskManager.stopTasks(taskIDList)
+        }
+        // Verify the exception contains the list of task ID that failed to stop
+        Assertions.assertEquals("Fail to stop task ID: [task1, task2, task3]", ex.message)
     }
 
     @Test
@@ -397,7 +400,7 @@ internal class EcsTaskManagerTest {
                 listOf(
                     Task.builder().taskArn("task1").lastStatus("STOPPED").build(),
                     Task.builder().taskArn("task2").lastStatus("RUNNING").build(),
-                    Task.builder().taskArn("task2").lastStatus("STOPPING").build()
+                    Task.builder().taskArn("task3").lastStatus("STOPPING").build()
                 )
             ).build()
         )
@@ -413,8 +416,10 @@ internal class EcsTaskManagerTest {
             ecsClient.waiter().waitUntilTasksStopped(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
         } returns waiter
 
-        val stoppedTaskIDList = ecsTaskManager.stopTasks(inputTaskIDList)
-        Assertions.assertTrue(stoppedTaskIDList == listOf("task1"))
+        val ex = assertThrows<EcsTaskManagerException> {
+            ecsTaskManager.stopTasks(inputTaskIDList)
+        }
+        Assertions.assertEquals("Fail to stop task ID: [task2, task3, task4, task5]", ex.message)
     }
 
     @Test
