@@ -6,8 +6,10 @@ import com.github.michaelbull.retry.policy.limitAttempts
 import com.github.michaelbull.retry.policy.plus
 import com.github.michaelbull.retry.policy.retryIf
 import com.github.michaelbull.retry.retry
+import kotlinx.coroutines.runBlocking
 import software.amazon.awssdk.services.iot.IotClient
 import software.amazon.awssdk.services.iot.model.CreateKeysAndCertificateResponse
+import software.amazon.awssdk.services.iot.model.DeleteConflictException
 import software.amazon.awssdk.services.iot.model.ResourceAlreadyExistsException
 import software.amazon.awssdk.services.iot.model.ResourceNotFoundException
 import software.amazon.awssdk.services.iot.model.ServiceUnavailableException
@@ -37,7 +39,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         } catch (ex: ResourceAlreadyExistsException) {
             println("Policy already exist, delete and create")
             val response = client.listTargetsForPolicy { builder -> builder.policyName(policyName).build() }
-            deletePolicy(policyName, response.targets().toSet())
+            runBlocking { deletePolicy(policyName, response.targets().toSet()) }
             client.createPolicy { builder ->
                 builder.policyName(policyName).policyDocument(policyDoc)
             }
@@ -66,29 +68,38 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         }
     }
 
-    private fun deletePolicy(policyName: String, setOfPrincipal: Set<String>) {
+    private suspend fun deletePolicy(policyName: String, setOfPrincipal: Set<String>) {
         setOfPrincipal.forEach {
             client.detachPolicy { builder ->
                 builder.policyName(policyName).target(it).build()
             }
         }
-        try {
-            client.deletePolicy { builder ->
-                builder.policyName(policyName)
+        // Because of the distributed nature of Amazon Web Services, it can take up to
+        // five minutes after a policy is detached before it's ready to be deleted.
+        // We need retry if this happened
+        retry(retryPolicyForDeletingPolicy) {
+            try {
+                client.deletePolicy { builder ->
+                    builder.policyName(policyName)
+                }
+            } catch (ex: ResourceNotFoundException) {
+                // If raise exception policy not found, continue the operation
+                println("Policy $policyName not found")
             }
-        } catch (ex: ResourceNotFoundException) {
-            // If raise exception policy not found, continue the operation
-            println("Policy $policyName not found")
         }
     }
 
-    private fun deleteCerts(setOfPrincipal: Set<String>) {
+    private suspend fun deleteCerts(setOfPrincipal: Set<String>) {
         setOfPrincipal.forEach {
             client.updateCertificate { builder ->
                 builder.certificateId(it.substringAfterLast("/")).newStatus("INACTIVE").build()
             }
-            client.deleteCertificate { builder ->
-                builder.certificateId(it.substringAfterLast("/")).forceDelete(true).build()
+            // The detachThingPrincipal is async call and might take few seconds to propagate.
+            // So it might happen that cert is not ready to delete. If this happens, retry in a few moment
+            retry(retryPolicyForDeletingCert) {
+                client.deleteCertificate { builder ->
+                    builder.certificateId(it.substringAfterLast("/")).forceDelete(true).build()
+                }
             }
         }
     }
@@ -119,14 +130,14 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
     }
 
     /**
-     * This function accept a map of vehicle id to vehicle simulation local folder.
+     * This function accepts a map of vehicle id to vehicle simulation local folder.
      * It will invoke IoTClient to create thing for each vehicle and store the certificate, private key at
      * the provided S3 path
      *
      * @param simConfigMap Mapping between vehicle id and its local simulation package folder
      * @param policyName Optional to allow client specify customized policy name
      * @param policyDocumentPath Optional to allow client specify IoT Policy
-     * @return a list of created Things and a list of fail to create things
+     * @return a list of created Things and a list of failed to create things
      */
     suspend fun createAndStoreThings(
         simConfigMap: Map<String, String>,
@@ -134,9 +145,11 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         policyDocumentPath: String = "Policy/IoTPolicy.json"
     ): Pair<List<String>, List<String>> {
         val cert = createKeysAndCertificate()
+        println("Certificate ${cert.certificateId()} created")
         createPolicyAndAttachToCert(policyName, policyDocumentPath, cert.certificateArn())
+        println("Policy $policyName created")
         val createdThings = simConfigMap.map {
-            retry(retryPolicy) {
+            retry(retryPolicyForDeletingCreatingThing) {
                 createThingAndAttachCert(it.key, cert.certificateArn())
             }
             // The thing is created, store cert and private key onto S3
@@ -149,20 +162,20 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
     }
 
     /**
-     * This function accept a map of vehicle id to vehicle simulation local folder.
+     * This function accepts a map of vehicle id to vehicle simulation local folder.
      * It will invoke IoTClient to delete thing for each vehicle and delete the certificate, private key at
      * the provided S3 path
      *
      * @param simConfigMap Mapping between vehicle id and its local simulation package folder
      * @param policyName Optional to allow client specify customized policy name
-     * @return a list of deleted Things and a list of fail to delete things
+     * @return a list of deleted Things and a list of failed to delete things
      */
     suspend fun deleteThings(
         simConfigMap: Map<String, String>,
         policyName: String = "vehicle-simulator-policy",
     ): Pair<List<String>, List<String>> {
         val deleteThingResponse = simConfigMap.map {
-            retry(retryPolicy) {
+            retry(retryPolicyForDeletingCreatingThing) {
                 println("deleting ${it.key}")
                 val listOfPrincipal = deleteThing(it.key)
                 Pair(it.key, listOfPrincipal)
@@ -181,7 +194,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
     }
 
     /**
-     * This function invoke IoTClient to return end point
+     * This function invokes IoTClient to return end point
      *
      * @return IoT End Point
      */
@@ -194,9 +207,19 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
     companion object {
         private const val MAX_RETRIES: Int = 9
 
-        private val retryPolicy =
+        private val retryPolicyForDeletingPolicy =
+            retryIf<Throwable> { reason is DeleteConflictException } +
+                limitAttempts(MAX_RETRIES) +
+                decorrelatedJitterBackoff(base = 1000, max = 10 * 1000)
+
+        private val retryPolicyForDeletingCert =
+            retryIf<Throwable> { reason is DeleteConflictException } +
+                limitAttempts(MAX_RETRIES) +
+                decorrelatedJitterBackoff(base = 1000, max = 300 * 1000)
+
+        private val retryPolicyForDeletingCreatingThing =
             retryIf<Throwable> { reason is ThrottlingException || reason is ServiceUnavailableException } +
                 limitAttempts(MAX_RETRIES) +
-                decorrelatedJitterBackoff(base = 10, max = 2000)
+                decorrelatedJitterBackoff(base = 1000, max = 10 * 1000)
     }
 }
