@@ -1,13 +1,14 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.iot
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.IoTThingManagerException
+import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
+import io.mockk.verify
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
-import org.junit.jupiter.api.io.TempDir
 import software.amazon.awssdk.services.iot.IotClient
 import software.amazon.awssdk.services.iot.model.AttachPolicyRequest
 import software.amazon.awssdk.services.iot.model.AttachPolicyResponse
@@ -31,31 +32,28 @@ import software.amazon.awssdk.services.iot.model.DetachPolicyRequest
 import software.amazon.awssdk.services.iot.model.DetachPolicyResponse
 import software.amazon.awssdk.services.iot.model.DetachThingPrincipalRequest
 import software.amazon.awssdk.services.iot.model.DetachThingPrincipalResponse
-import software.amazon.awssdk.services.iot.model.InvalidRequestException
+import software.amazon.awssdk.services.iot.model.ListTargetsForPolicyRequest
+import software.amazon.awssdk.services.iot.model.ListTargetsForPolicyResponse
 import software.amazon.awssdk.services.iot.model.ListThingPrincipalsRequest
 import software.amazon.awssdk.services.iot.model.ListThingPrincipalsResponse
-import software.amazon.awssdk.services.iot.model.MalformedPolicyException
 import software.amazon.awssdk.services.iot.model.ResourceAlreadyExistsException
 import software.amazon.awssdk.services.iot.model.ResourceNotFoundException
 import software.amazon.awssdk.services.iot.model.UpdateCertificateRequest
 import software.amazon.awssdk.services.iot.model.UpdateCertificateResponse
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.Paths
 import java.util.function.Consumer
 
 internal class IoTThingManagerTest {
-
-    // We cannot mock File as it's not supported in mockk. We write cert/key to temporary folders of JUnit
-    @TempDir
-    @JvmField
-    var tempFolder: File? = null
-
     private val ioTClient = mockk<IotClient>()
 
-    private val iotThingManager = IoTThingManager(ioTClient)
+    private val s3Storage = mockk<S3Storage>()
+
+    private val iotThingManager = IoTThingManager(ioTClient, s3Storage)
 
     private val carList = listOf("car0", "car1", "car2", "car3")
+
+    private val simulationMapping = carList.associateWith {
+        "S3:://test_bucket/$it"
+    }
 
     private val createThingRequestSlot = mutableListOf<Consumer<CreateThingRequest.Builder>>()
     private val createPolicyRequestSlot = mutableListOf<Consumer<CreatePolicyRequest.Builder>>()
@@ -69,10 +67,20 @@ internal class IoTThingManagerTest {
     private val deleteCertificateRequest = mutableListOf<Consumer<DeleteCertificateRequest.Builder>>()
     private val deleteThingRequest = mutableListOf<Consumer<DeleteThingRequest.Builder>>()
     private val deletePolicyRequest = mutableListOf<Consumer<DeletePolicyRequest.Builder>>()
+    private val listTargetsForPolicyRequest = mutableListOf<Consumer<ListTargetsForPolicyRequest.Builder>>()
     private val describeEndPointRequest = mutableListOf<Consumer<DescribeEndpointRequest.Builder>>()
 
     @BeforeEach
     fun setup() {
+        // Mock for S3 Storage
+        every {
+            s3Storage.put(any(), any())
+        } returns Unit
+
+        every {
+            s3Storage.deleteObjectsFromSameBucket(any())
+        } returns Unit
+
         // Mock IoT API calls
         every {
             ioTClient.createThing(capture(createThingRequestSlot))
@@ -82,21 +90,21 @@ internal class IoTThingManagerTest {
             ioTClient.createPolicy(capture(createPolicyRequestSlot))
         } returnsMany carList.map {
             CreatePolicyResponse.builder()
-                .policyName("${IoTThingManager.POLICY_PREFIX}$it${IoTThingManager.POLICY_POSTFIX}").build()
+                .policyName("vehicle-simulator-policy").build()
         }
 
         every {
             ioTClient.createKeysAndCertificate(capture(createKeysAndCertificateRequestSlot))
-        } returnsMany carList.map {
+        } returns
             CreateKeysAndCertificateResponse.builder()
-                .certificatePem("Certificate for $it")
+                .certificateArn("certificate arn")
+                .certificatePem("certificate")
                 .keyPair { builder ->
                     builder
-                        .privateKey("private key for $it")
-                        .publicKey("public key for $it")
+                        .privateKey("private key")
+                        .publicKey("public key")
                         .build()
                 }.build()
-        }
 
         every {
             ioTClient.attachPolicy(capture(attachPolicyRequestSlot))
@@ -137,31 +145,20 @@ internal class IoTThingManagerTest {
         } returns DeletePolicyResponse.builder().build()
 
         every {
+            ioTClient.listTargetsForPolicy(capture(listTargetsForPolicyRequest))
+        } returns ListTargetsForPolicyResponse.builder().targets(listOf("cert")).build()
+
+        every {
             ioTClient.describeEndpoint(capture(describeEndPointRequest))
         } returns DescribeEndpointResponse.builder().endpointAddress("endpointAddress").build()
     }
 
     @Test
     fun `When createAndStoreThings called with IoT Thing successfully created and stored`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        // create directory for each car
-        simulationMapping.forEach { Files.createDirectory(Paths.get(it.value)) }
+        val result = runBlocking { iotThingManager.createAndStoreThings(simulationMapping) }
+        Assertions.assertEquals(carList, result.first)
+        Assertions.assertEquals(0, result.second.size)
 
-        val status = iotThingManager.createAndStoreThings(simulationMapping)
-        Assertions.assertEquals(true, status)
-        // Verify the cert and key are correctly written
-        simulationMapping.forEach {
-            Assertions.assertEquals(
-                "Certificate for ${it.key}",
-                File(it.value + "/cert.crt").readText()
-            )
-            Assertions.assertEquals(
-                "private key for ${it.key}",
-                File(it.value + "/pri.key").readText()
-            )
-        }
         createThingRequestSlot.map {
             val builder = CreateThingRequest.builder()
             it.accept(builder)
@@ -173,9 +170,7 @@ internal class IoTThingManagerTest {
             val builder = CreatePolicyRequest.builder()
             it.accept(builder)
             builder.build().policyName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals("${IoTThingManager.POLICY_PREFIX}car$index${IoTThingManager.POLICY_POSTFIX}", element)
-        }
+        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
         createKeysAndCertificateRequestSlot.map {
             val builder = CreateKeysAndCertificateRequest.builder()
             it.accept(builder)
@@ -185,9 +180,7 @@ internal class IoTThingManagerTest {
             val builder = AttachPolicyRequest.builder()
             it.accept(builder)
             builder.build().policyName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals("${IoTThingManager.POLICY_PREFIX}${carList[index]}${IoTThingManager.POLICY_POSTFIX}", element)
-        }
+        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
         attachThingPrincipalRequestSlot.map {
             val builder = AttachThingPrincipalRequest.builder()
             it.accept(builder)
@@ -195,124 +188,62 @@ internal class IoTThingManagerTest {
         }.forEachIndexed { index, element ->
             Assertions.assertEquals("car$index", element)
         }
-    }
-
-    @Test
-    fun `When createAndStoreThings called with IoTClient createThing raise exception`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        // create directory for each car
-        simulationMapping.forEach { Files.createDirectory(Paths.get(it.value)) }
-        listOf(
-            ResourceAlreadyExistsException.builder().build(),
-            InvalidRequestException.builder().build()
-        ).forEach {
-            every {
-                ioTClient.createThing(capture(createThingRequestSlot))
-            } throws it
-            assertThrows<IoTThingManagerException> { iotThingManager.createAndStoreThings(simulationMapping) }
+        // Verify the S3 Storage API is invoked correctly
+        carList.forEach {
+            verify(exactly = 1) { s3Storage.put("S3:://test_bucket/$it/cert.crt", "certificate".toByteArray()) }
+            verify(exactly = 1) { s3Storage.put("S3:://test_bucket/$it/pri.key", "private key".toByteArray()) }
         }
     }
 
     @Test
-    fun `When createAndStoreThings called with IoTClient createPolicy raise exception`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
+    fun `When createAndStoreThings called with IoT Thing already exist`() {
+        // Here we mock car1 and car2 already exist. The createThing will throw resource exist exception
+        every {
+            ioTClient.createThing(capture(createThingRequestSlot))
+        } throws ResourceAlreadyExistsException.builder().build() andThen
+            CreateThingResponse.builder().build() andThenThrows
+            ResourceAlreadyExistsException.builder().build() andThen
+            CreateThingResponse.builder().build()
+        val result = runBlocking { iotThingManager.createAndStoreThings(simulationMapping) }
+        var recreatedCarList = deleteThingRequest.map {
+            val builder = DeleteThingRequest.builder()
+            it.accept(builder)
+            builder.build().thingName()
         }
-        // create directory for each car
-        simulationMapping.forEach { Files.createDirectory(Paths.get(it.value)) }
-        listOf(
-            ResourceAlreadyExistsException.builder().build(),
-            MalformedPolicyException.builder().build(),
-            InvalidRequestException.builder().build()
-        ).forEach {
-            every {
-                ioTClient.createPolicy(any<Consumer<CreatePolicyRequest.Builder>>())
-            } throws it
-            assertThrows<IoTThingManagerException> { iotThingManager.createAndStoreThings(simulationMapping) }
+        Assertions.assertEquals(listOf("car0", "car1"), recreatedCarList)
+        recreatedCarList = createThingRequestSlot.map {
+            val builder = CreateThingRequest.builder()
+            it.accept(builder)
+            builder.build().thingName()
         }
+        // There would be two call for car0 and car1. The first call raise exception, the second call after deletion.
+        Assertions.assertEquals(listOf("car0", "car0", "car1", "car1", "car2", "car3"), recreatedCarList)
+        Assertions.assertEquals(carList, result.first)
+        Assertions.assertEquals(0, result.second.size)
     }
 
     @Test
-    fun `When createAndStoreThings called with IoTClient createKeysAndCertificate raise exception`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        // create directory for each car
-        simulationMapping.forEach { Files.createDirectory(Paths.get(it.value)) }
-        listOf(
-            InvalidRequestException.builder().build()
-        ).forEach {
-            every {
-                ioTClient.createKeysAndCertificate(capture(createKeysAndCertificateRequestSlot))
-            } throws it
-            assertThrows<IoTThingManagerException> { iotThingManager.createAndStoreThings(simulationMapping) }
-        }
-    }
-
-    @Test
-    fun `When createAndStoreThings called with IoTClient attachPolicy raise exception`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        // create directory for each car
-        simulationMapping.forEach { Files.createDirectory(Paths.get(it.value)) }
-        listOf(
-            ResourceNotFoundException.builder().build(),
-            InvalidRequestException.builder().build()
-        ).forEach {
-            every {
-                ioTClient.attachPolicy(capture(attachPolicyRequestSlot))
-            } throws it
-            assertThrows<IoTThingManagerException> { iotThingManager.createAndStoreThings(simulationMapping) }
-        }
-    }
-
-    @Test
-    fun `When createAndStoreThings called with IoTClient attachThingPrincipal raise exception`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        // create directory for each car
-        simulationMapping.forEach { Files.createDirectory(Paths.get(it.value)) }
-        listOf(
-            ResourceNotFoundException.builder().build(),
-            InvalidRequestException.builder().build()
-        ).forEach {
-            every {
-                ioTClient.attachThingPrincipal(capture(attachThingPrincipalRequestSlot))
-            } throws it
-            assertThrows<IoTThingManagerException> { iotThingManager.createAndStoreThings(simulationMapping) }
-        }
-    }
-
-    @Test
-    fun `When createAndStoreThings called with invalid directory`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        var status = iotThingManager.createAndStoreThings(simulationMapping)
-        // We intentionally pass in a non exist folder. We shall expect it return false as store failed
-        Assertions.assertEquals(false, status)
-        simulationMapping.forEach { Files.createFile(Paths.get(it.value)) }
-        status = iotThingManager.createAndStoreThings(simulationMapping)
-        // We intentionally pass in files instead of folders. We shall expect it return false as store failed
-        Assertions.assertEquals(false, status)
+    fun `When createAndStoreThings called with IoT Policy already exist`() {
+        // Mock policy already exist hence the first API call raise resource already exist exception
+        every {
+            ioTClient.createPolicy(capture(createPolicyRequestSlot))
+        } throws ResourceAlreadyExistsException.builder().build() andThen
+            CreatePolicyResponse.builder().policyName("vehicle-simulator-policy").build()
+        val result = runBlocking { iotThingManager.createAndStoreThings(simulationMapping) }
+        createPolicyRequestSlot.map {
+            val builder = CreatePolicyRequest.builder()
+            it.accept(builder)
+            builder.build().policyName()
+        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
+        Assertions.assertEquals(carList, result.first)
+        Assertions.assertEquals(0, result.second.size)
     }
 
     @Test
     fun `When deleteThings called with IoT Thing, cert and key deleted`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        simulationMapping.forEach {
-            Files.createDirectory(Paths.get(it.value))
-            Files.createFile(Paths.get(it.value + "/cert.crt"))
-            Files.createFile(Paths.get(it.value + "/pri.key"))
-        }
-        val status = iotThingManager.deleteThings(simulationMapping)
-        Assertions.assertEquals(true, status)
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        Assertions.assertEquals(carList, result.first)
+        Assertions.assertEquals(0, result.second.size)
         listThingPrincipalRequestSlot.map {
             val builder = ListThingPrincipalsRequest.builder()
             it.accept(builder)
@@ -331,9 +262,7 @@ internal class IoTThingManagerTest {
             val builder = DetachPolicyRequest.builder()
             it.accept(builder)
             builder.build().policyName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals("${IoTThingManager.POLICY_PREFIX}${carList[index]}${IoTThingManager.POLICY_POSTFIX}", element)
-        }
+        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
         updateCertificateRequest.map {
             val builder = UpdateCertificateRequest.builder()
             it.accept(builder)
@@ -353,56 +282,36 @@ internal class IoTThingManagerTest {
         }.forEachIndexed { index, element ->
             Assertions.assertEquals(carList[index], element)
         }
+        verify(exactly = 1) { s3Storage.deleteObjectsFromSameBucket(carList.map { "S3:://test_bucket/$it/cert.crt" }) }
+        verify(exactly = 1) { s3Storage.deleteObjectsFromSameBucket(carList.map { "S3:://test_bucket/$it/pri.key" }) }
         deletePolicyRequest.map {
             val builder = DeletePolicyRequest.builder()
             it.accept(builder)
             builder.build().policyName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals("${IoTThingManager.POLICY_PREFIX}${carList[index]}${IoTThingManager.POLICY_POSTFIX}", element)
-        }
+        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
     }
 
     @Test
-    fun `When deleteThings called with ioTClient raise exception`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
+    fun `When deleteThings called with IoT Thing Not Found`() {
+        // Mock ResourceNotFoundException as the code will log exception error message
+        mockkConstructor(ResourceNotFoundException::class)
+        every { anyConstructed<ResourceNotFoundException>().awsErrorDetails().errorMessage() } returns "IoT Thing Not Found"
         every {
             ioTClient.listThingPrincipals(capture(listThingPrincipalRequestSlot))
         } throws ResourceNotFoundException.builder().build()
-        assertThrows<IoTThingManagerException> { iotThingManager.deleteThings(simulationMapping) }
-        every {
-            ioTClient.listThingPrincipals(capture(listThingPrincipalRequestSlot))
-        } throws InvalidRequestException.builder().build()
-        assertThrows<IoTThingManagerException> { iotThingManager.deleteThings(simulationMapping) }
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        Assertions.assertEquals(carList, result.first)
+        Assertions.assertEquals(0, result.second.size)
     }
 
     @Test
-    fun `When deleteThings called with IoT Thing deleted but cert and key not deleted`() {
-        val simulationMapping = carList.associateWith {
-            tempFolder?.toPath().toString() + "/$it"
-        }
-        var status = iotThingManager.deleteThings(simulationMapping)
-        Assertions.assertEquals(false, status)
-        simulationMapping.forEach {
-            Files.createDirectory(Paths.get(it.value))
-            Files.createFile(Paths.get(it.value + "/cert.crt"))
-        }
-        status = iotThingManager.deleteThings(simulationMapping)
-        Assertions.assertEquals(false, status)
-        simulationMapping.forEach {
-            Files.deleteIfExists(Paths.get(it.value + "/cert.crt"))
-            Files.createFile(Paths.get(it.value + "/pri.key"))
-        }
-        status = iotThingManager.deleteThings(simulationMapping)
-        Assertions.assertEquals(false, status)
-        simulationMapping.forEach {
-            Files.deleteIfExists(Paths.get(it.value + "/pri.key"))
-            Files.createDirectory(Paths.get(it.value + "/cert.crt"))
-            Files.createDirectory(Paths.get(it.value + "/pri.key"))
-        }
-        status = iotThingManager.deleteThings(simulationMapping)
-        Assertions.assertEquals(false, status)
+    fun `When deleteThings called with IoT Policy Not Found`() {
+        every {
+            ioTClient.deletePolicy(capture(deletePolicyRequest))
+        } throws ResourceNotFoundException.builder().build()
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        Assertions.assertEquals(carList, result.first)
+        Assertions.assertEquals(0, result.second.size)
     }
 
     @Test
