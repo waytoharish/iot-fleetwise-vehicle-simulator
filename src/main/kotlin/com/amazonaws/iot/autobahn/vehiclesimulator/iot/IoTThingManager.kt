@@ -194,11 +194,11 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
     }
 
     /**
-     * This function invokes IoTClient to return end point
+     * This function invokes IoTClient to return IoT Core Device Data End Point
      *
-     * @return IoT End Point
+     * @return IoT Device Data End Point address
      */
-    fun getEndPoint(): String {
+    fun getIoTCoreDataEndPoint(): String {
         return client.describeEndpoint { builder ->
             builder.endpointType("iot:Data-ATS")
         }.endpointAddress()

@@ -315,7 +315,8 @@ internal class IoTThingManagerTest {
     }
 
     @Test
-    fun getEndPoint() {
+    fun getIoTCoreDataEndPoint() {
+        val endpointAddress = iotThingManager.getIoTCoreDataEndPoint()
         describeEndPointRequest.map {
             val builder = DescribeEndpointRequest.builder()
             it.accept(builder)
@@ -323,6 +324,6 @@ internal class IoTThingManagerTest {
         }.forEach {
             Assertions.assertEquals("iot:Data-ATS", it)
         }
-        Assertions.assertEquals("endpointAddress", iotThingManager.getEndPoint())
+        Assertions.assertEquals("endpointAddress", endpointAddress)
     }
 }
