@@ -1,0 +1,12 @@
+{
+  "mqttConnection": {
+    "endpointUrl": "$IOT_CORE_DEVICE_DATA_POINT",
+    "clientId": "$VEHICLE_ID",
+    "collectionSchemeListTopic": "$aws/iotfleetwise/gamma-us-east-1/vehicles/$VEHICLE_ID/collection_schemes",
+    "decoderManifestTopic": "$aws/iotfleetwise/gamma-us-east-1/vehicles/$VEHICLE_ID/decoder_manifests",
+    "canDataTopic": "$aws/iotfleetwise/gamma-us-east-1/vehicles/$VEHICLE_ID/signals",
+    "checkinTopic": "$aws/iotfleetwise/gamma-us-east-1/vehicles/$VEHICLE_ID/checkins",
+    "certificateFilename": "/etc/aws-iot-fleetwise-sim/$VEHICLE_ID/cert.crt",
+    "privateKeyFilename": "/etc/aws-iot-fleetwise-sim/$VEHICLE_ID/pri.key"
+  }
+}

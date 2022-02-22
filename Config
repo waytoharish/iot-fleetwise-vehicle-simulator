@@ -22,7 +22,7 @@ package.IoTAutobahnVehicleSimulator = {
             KotlinStdlibJdk8 = 1.4.x;
             KotlinxCoroutinesCore = 1.4.x;
             KotlinxCoroutinesJdk8 = 1.4.x;
-
+            Gson = 2.8.x;
             Picocli = 4.x;
             AwsJavaSdk-Ecs = 2.0;
             AwsJavaSdk-S3 = 2.0;
