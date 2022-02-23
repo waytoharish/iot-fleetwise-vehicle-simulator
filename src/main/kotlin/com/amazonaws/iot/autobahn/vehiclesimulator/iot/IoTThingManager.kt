@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import software.amazon.awssdk.services.iot.IotClient
 import software.amazon.awssdk.services.iot.model.CreateKeysAndCertificateResponse
 import software.amazon.awssdk.services.iot.model.DeleteConflictException
+import software.amazon.awssdk.services.iot.model.InvalidRequestException
 import software.amazon.awssdk.services.iot.model.ResourceAlreadyExistsException
 import software.amazon.awssdk.services.iot.model.ResourceNotFoundException
 import software.amazon.awssdk.services.iot.model.ServiceUnavailableException
@@ -50,7 +51,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         }
     }
 
-    private fun createThingAndAttachCert(vehicleId: String, certArn: String) {
+    private suspend fun createThingAndAttachCert(vehicleId: String, certArn: String) {
         try {
             client.createThing { builder ->
                 builder.thingName(vehicleId)
@@ -104,7 +105,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         }
     }
 
-    private fun deleteThing(vehicleId: String): List<String> {
+    private suspend fun deleteThing(vehicleId: String): List<String> {
         // First we query a list of thing principals for this Thing.
         val listOfPrincipal = try {
             client.listThingPrincipals { builder ->
@@ -123,8 +124,11 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
             }
         }
         // Based on API doc, if thing doesn't exist, deleteThing still returns true
-        client.deleteThing { builder ->
-            builder.thingName(vehicleId)
+        // The previous call of detachThingPrincipal might take several seconds to propagate. Hence retry
+        retry(retryPolicyForDeletingThing) {
+            client.deleteThing { builder ->
+                builder.thingName(vehicleId)
+            }
         }
         return listOfPrincipal
     }
@@ -209,6 +213,11 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
 
         private val retryPolicyForDeletingPolicy =
             retryIf<Throwable> { reason is DeleteConflictException } +
+                limitAttempts(MAX_RETRIES) +
+                decorrelatedJitterBackoff(base = 1000, max = 10 * 1000)
+
+        private val retryPolicyForDeletingThing =
+            retryIf<Throwable> { reason is InvalidRequestException } +
                 limitAttempts(MAX_RETRIES) +
                 decorrelatedJitterBackoff(base = 1000, max = 10 * 1000)
 
