@@ -38,7 +38,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
                 builder.policyName(policyName).policyDocument(policyDoc)
             }
         } catch (ex: ResourceAlreadyExistsException) {
-            println("Policy already exist, delete and create")
+            println("Policy already exists, delete and create")
             val response = client.listTargetsForPolicy { builder -> builder.policyName(policyName).build() }
             runBlocking { deletePolicy(policyName, response.targets().toSet()) }
             client.createPolicy { builder ->
@@ -57,7 +57,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
                 builder.thingName(vehicleId)
             }
         } catch (ex: ResourceAlreadyExistsException) {
-            println("IoT Thing already exist, delete and re-create a new one")
+            println("IoT Thing already exists, delete and re-create a new one")
             deleteThing(vehicleId)
             client.createThing { builder ->
                 builder.thingName(vehicleId)
@@ -69,8 +69,8 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         }
     }
 
-    private suspend fun deletePolicy(policyName: String, setOfPrincipal: Set<String>) {
-        setOfPrincipal.forEach {
+    private suspend fun deletePolicy(policyName: String, principalSet: Set<String>) {
+        principalSet.forEach {
             client.detachPolicy { builder ->
                 builder.policyName(policyName).target(it).build()
             }
@@ -90,8 +90,8 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         }
     }
 
-    private suspend fun deleteCerts(setOfPrincipal: Set<String>) {
-        setOfPrincipal.forEach {
+    private suspend fun deleteCerts(principalSet: Set<String>) {
+        principalSet.forEach {
             client.updateCertificate { builder ->
                 builder.certificateId(it.substringAfterLast("/")).newStatus("INACTIVE").build()
             }
@@ -107,7 +107,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
 
     private suspend fun deleteThing(vehicleId: String): List<String> {
         // First we query a list of thing principals for this Thing.
-        val listOfPrincipal = try {
+        val principalList = try {
             client.listThingPrincipals { builder ->
                 builder.thingName(vehicleId).build()
             }.principals()
@@ -117,7 +117,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
             println("listThingPrincipals raised exception: ${ex.awsErrorDetails().errorMessage()}")
             listOf<String>()
         }
-        listOfPrincipal.map {
+        principalList.map {
             // The sequence below is the fixed order of preparation work before deleting thing and policy
             client.detachThingPrincipal { builder ->
                 builder.thingName(vehicleId).principal(it).build()
@@ -130,7 +130,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
                 builder.thingName(vehicleId)
             }
         }
-        return listOfPrincipal
+        return principalList
     }
 
     /**
@@ -181,8 +181,8 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         val deleteThingResponse = simConfigMap.map {
             retry(retryPolicyForDeletingCreatingThing) {
                 println("deleting ${it.key}")
-                val listOfPrincipal = deleteThing(it.key)
-                Pair(it.key, listOfPrincipal)
+                val principalList = deleteThing(it.key)
+                Pair(it.key, principalList)
             }
         }.toMap()
         s3Storage.deleteObjectsFromSameBucket(
