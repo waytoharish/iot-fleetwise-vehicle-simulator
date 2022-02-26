@@ -56,52 +56,16 @@ internal class S3StorageTest {
     }
 
     @Test
-    fun `when put called with s3url and data`() {
-        val bucket = "some-bucket"
-        val key = "some-key"
-        val url = "S3://$bucket/$key"
-        val data = "some-data"
-
-        val putObjectRequestList = mutableListOf<Consumer<PutObjectRequest.Builder>>()
-        every {
-            client.putObject(capture(putObjectRequestList), any<RequestBody>())
-        } returns PutObjectResponse.builder().build()
-
-        s3Storage.put(url, data.toByteArray(Charsets.UTF_8))
-        val actualKey = putObjectRequestList.map {
-            val builder = PutObjectRequest.builder()
-            it.accept(builder)
-            builder.build().key()
-        }[0]
-
-        val actualBucket = putObjectRequestList.map {
-            val builder = PutObjectRequest.builder()
-            it.accept(builder)
-            builder.build().bucket()
-        }[0]
-
-        val content = putObjectRequestList.map {
-            val builder = PutObjectRequest.builder()
-            it.accept(builder)
-            builder.build().contentMD5()
-        }[0]
-
-        Assertions.assertEquals(key, actualKey)
-        Assertions.assertEquals(bucket, actualBucket)
-        Assertions.assertEquals(Base64.getEncoder().encodeToString(MessageDigest.getInstance("MD5").digest(data.toByteArray(Charsets.UTF_8))), content)
-    }
-
-    @Test
     fun `when deleteObjectsFromSameBucket called with a list of S3 url that belong to the same S3 bucket`() {
         val bucket = "some-bucket"
-        val s3Urls = listOf("file1", "file2", "file3").map { "S3://$bucket/$it" }
+        val keys = listOf("file1", "file2", "file3")
 
         val deleteObjectsRequest = mutableListOf<Consumer<DeleteObjectsRequest.Builder>>()
         every {
             client.deleteObjects(capture(deleteObjectsRequest))
         } returns DeleteObjectsResponse.builder().build()
 
-        s3Storage.deleteObjectsFromSameBucket(s3Urls)
+        s3Storage.deleteObjects(bucket, keys)
 
         Assertions.assertEquals(
             bucket,
@@ -113,7 +77,7 @@ internal class S3StorageTest {
         )
 
         Assertions.assertEquals(
-            listOf("file1", "file2", "file3").map { ObjectIdentifier.builder().key(it).build() },
+            keys.map { ObjectIdentifier.builder().key(it).build() },
             deleteObjectsRequest.flatMap {
                 val builder = DeleteObjectsRequest.builder()
                 it.accept(builder)
