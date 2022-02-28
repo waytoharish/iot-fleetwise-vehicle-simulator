@@ -1,70 +1,65 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig
 
-import com.google.gson.Gson
-import java.io.BufferedReader
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
+import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException
+import com.fasterxml.jackson.module.kotlin.readValue
 
 /**
  * This class process Edge Config file
  */
 class EdgeConfigProcessor {
     /**
-     * This function set the MQTT Connection parameter for Edge config file
-     * The MQTT Connection Template for each test environment is stored under resources
-     * Note the config file passed in and out in String format
-     * @param testEnvironment The FleetWise test environment such as Gamma_PDX, Gamma_IAD, Beta_IAD, Alpha_IAD, Prod_IAD, Prod_PDX
+     * This function sets the MQTT Connection parameter for Edge config file
+     * The MQTT Connection depends on vehicle ID, FleetWise test environment
+     * Note the config file passed in and out as String format
+     * @param objectMapper ObjectMapper instance
      * @param vehicleIDToConfigMap Mapping between vehicle ID and config string
      * @param iotCoreDeviceDataEndPoint IoT Core Device Data End Point
+     * @param collectionSchemeListTopic MQTT Topic for Collection Scheme List
+     * @param decoderManifestTopic MQTT Topic for decoder manifest
+     * @param canDataTopic MQTT Topic for can data
+     * @param checkinTopic MQTT Topic for checkin
+     * @param certificateFileName Path to certificate file
+     * @param privateKeyFileName Path to the privatfe key file
      * @return Map contains vehicleID and config file filled with mqtt connection parameter
+     * @throws MissingKotlinParameterException if user provided config file miss parameter
      */
     fun setMqttConnectionParameter(
-        testEnvironment: String,
+        objectMapper: ObjectMapper,
         vehicleIDToConfigMap: Map<String, String>,
-        iotCoreDeviceDataEndPoint: String
+        iotCoreDeviceDataEndPoint: String,
+        collectionSchemeListTopic: String,
+        decoderManifestTopic: String,
+        canDataTopic: String,
+        checkinTopic: String,
+        certificateFileName: String,
+        privateKeyFileName: String
     ): Map<String, String> {
         return vehicleIDToConfigMap.mapNotNull {
-            val gson = Gson()
-            val mqttConnectionFilePath = try {
-                this.javaClass.classLoader
-                    .getResourceAsStream("mqttConnection/$testEnvironment.json")!!
-                    .bufferedReader()
-                    .use(BufferedReader::readText)
-            } catch (ex: NullPointerException) {
-                println("The provided Edge config file is invalid: $testEnvironment")
+            // construct mqtt connection based on input
+            val mqttConnection = MqttConnection(
+                iotCoreDeviceDataEndPoint,
+                it.key,
+                collectionSchemeListTopic.replace("\$VEHICLE_ID", it.key),
+                decoderManifestTopic.replace("\$VEHICLE_ID", it.key),
+                canDataTopic.replace("\$VEHICLE_ID", it.key),
+                checkinTopic.replace("\$VEHICLE_ID", it.key),
+                certificateFileName.replace("\$VEHICLE_ID", it.key),
+                privateKeyFileName.replace("\$VEHICLE_ID", it.key),
+            )
+            val inputConfig: Config = try {
+                objectMapper.readValue(it.value)
+            } catch (ex: MissingKotlinParameterException) {
+                println("Config File misses Parameter for ${it.key}. Config file: ${it.value}")
+                throw ex
+            } catch (ex: UnrecognizedPropertyException) {
+                println("Config File contains unknown parameter for ${it.key}. Config file: ${it.value}")
                 throw ex
             }
-            // This is the MQTT config JSON string for the targeted test environment
-            val mqttConfigTemplate = gson.fromJson(mqttConnectionFilePath, Map::class.java)
-            // Convert JSON string to Map
-            @Suppress("UNCHECKED_CAST")
-            val mqttConnectionParameterTemplate = mqttConfigTemplate["mqttConnection"] as Map<String, String>
-            // Replace the templated value with targeted test environment
-            val mqttConnectionParameterMap = mqttConnectionParameterTemplate.map { parameter ->
-                when (parameter.key) {
-                    "endpointUrl" -> parameter.key to iotCoreDeviceDataEndPoint
-                    else -> parameter.key to parameter.value.replace("\$VEHICLE_ID", it.key)
-                }
-            }.toMap()
-            // Convert the config file provided by user to Map
-            @Suppress("UNCHECKED_CAST")
-            val userConfigJson = try {
-                gson.fromJson(it.value, Map::class.java) as MutableMap<String, MutableMap<String, Map<String, String>>>
-            } catch (ex: NullPointerException) {
-                // TODO Log Error
-                println("The provided Edge config file is invalid: ${it.value}")
-                throw ex
-            }
-            // Before we fill in the mqttConnection, double check user config format is correct
-            // Note this program doesn't detect invalid parameter inside mqttConnection section
-            if (userConfigJson["staticConfig"] is MutableMap<String, Map<String, String>> &&
-                userConfigJson["staticConfig"]?.get("mqttConnection") is Map<String, String>
-            ) {
-                userConfigJson["staticConfig"]?.put("mqttConnection", mqttConnectionParameterMap)
-                it.key to gson.toJson(userConfigJson)
-            } else {
-                // TODO Log Error
-                println("The provided Edge config file is invalid: ${it.value}")
-                null
-            }
+            // construct output config with the mqttConnection
+            val outputConfig = inputConfig.copy(staticConfig = inputConfig.staticConfig.copy(mqttConnection = mqttConnection))
+            it.key to objectMapper.writeValueAsString(outputConfig)
         }.toMap()
     }
 }
