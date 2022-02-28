@@ -15,13 +15,18 @@ class S3Storage(private var client: S3Client) {
     }
 
     fun deleteObjects(bucket: String, keyList: List<String>) {
-        client.deleteObjects { builder ->
-            builder.bucket(bucket).delete { it ->
-                it.objects(
-                    keyList.map { ObjectIdentifier.builder().key(it).build() }
-                )
+        // As maximum number of objects per IoTClient deleteObjects API can handle is 1000. Need to chunk the list
+        // if list length is larger than 1000
+        keyList.chunked(MAX_NUM_OF_OBJECTS_PER_DELETION)
+            .forEach { chunkedKeyList ->
+                client.deleteObjects { builder ->
+                    builder.bucket(bucket).delete { it ->
+                        it.objects(
+                            chunkedKeyList.map { ObjectIdentifier.builder().key(it).build() }
+                        )
+                    }
+                }
             }
-        }
     }
 
     companion object {
@@ -36,5 +41,8 @@ class S3Storage(private var client: S3Client) {
             val md5messageDigest = MessageDigest.getInstance("MD5")
             return base64Encoder.encodeToString(md5messageDigest.digest(byteArray))
         }
+
+        // Maximum number of objects per deleteObjects API can handle is 1000
+        private const val MAX_NUM_OF_OBJECTS_PER_DELETION = 1000
     }
 }

@@ -45,8 +45,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         } catch (ex: ResourceAlreadyExistsException) {
             if (recreatePolicyIfAlreadyExists) {
                 println("Policy already exists, delete and create")
-                val response = client.listTargetsForPolicy { builder -> builder.policyName(policyName).build() }
-                runBlocking { deletePolicy(policyName, response.targets().toSet()) }
+                runBlocking { deletePolicy(policyName) }
                 client.createPolicy { builder ->
                     builder.policyName(policyName).policyDocument(policyDocument)
                 }
@@ -78,8 +77,12 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         }
     }
 
-    private suspend fun deletePolicy(policyName: String, principalSet: Set<String>) = coroutineScope {
-        principalSet.forEach {
+    // If policy no longer exit, this function will throw ResourceNotFoundException
+    private suspend fun deletePolicy(policyName: String) = coroutineScope {
+        // To delete policy, we need to detach it from the targets (certificate)
+        client.listTargetsForPolicy { builder ->
+            builder.policyName(policyName).build()
+        }.targets().forEach {
             launch {
                 client.detachPolicy { builder ->
                     builder.policyName(policyName).target(it).build()
@@ -90,13 +93,9 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
         // five minutes after a policy is detached before it's ready to be deleted.
         // We need retry if this happened
         retry(retryPolicyForDeletingPolicy) {
-            try {
-                client.deletePolicy { builder ->
-                    builder.policyName(policyName)
-                }
-            } catch (ex: ResourceNotFoundException) {
-                // If raise exception policy not found, we should log it as Error but continue the clean up
-                println("Policy $policyName not found during deletion attempt")
+            println("deleting policy $policyName")
+            client.deletePolicy { builder ->
+                builder.policyName(policyName)
             }
         }
     }
@@ -104,21 +103,23 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
     private suspend fun deleteCerts(principalSet: Set<String>) = coroutineScope {
         principalSet.forEach {
             launch {
+                val certId = it.substringAfterLast("/")
                 client.updateCertificate { builder ->
-                    builder.certificateId(it.substringAfterLast("/")).newStatus("INACTIVE").build()
+                    builder.certificateId(certId).newStatus("INACTIVE").build()
                 }
                 // The detachThingPrincipal is async call and might take few seconds to propagate.
                 // So it might happen that cert is not ready to delete. If this happens, retry in a few moment
                 // if it still failed to delete, we should log it as error but continue cleaning up rest of things
                 try {
                     retry(retryPolicyForDeletingCert) {
+                        println("deleting cert $certId")
                         client.deleteCertificate { builder ->
-                            builder.certificateId(it.substringAfterLast("/")).forceDelete(true).build()
+                            builder.certificateId(certId).forceDelete(true).build()
                         }
                     }
                 } catch (ex: DeleteConflictException) {
                     // TODO Log Error
-                    println("Fail to delete Cert ${it.substringAfterLast("/")} due to DeleteConflictException")
+                    println("Fail to delete Cert $certId due to DeleteConflictException")
                 }
             }
         }
@@ -131,7 +132,7 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
                 builder.thingName(vehicleId).build()
             }.principals()
         } catch (ex: ResourceNotFoundException) {
-            // If exception raised due to Thing no longer exist, we shall continue the operation
+            // If exception raised due to Thing no longer exist, we shall continue the clean-up
             // TODO Log Warning
             println("listThingPrincipals raised exception: ${ex.awsErrorDetails().errorMessage()}")
             listOf<String>()
@@ -204,11 +205,13 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
      *
      * @param simConfigMap Mapping between vehicle id and its local simulation package folder
      * @param policyName Optional to allow client specify customized policy name
+     * @param deletePolicy Optional flag to indicate whether delete policy along with deleting things
      * @return a list of deleted Things and a list of failed to delete things
      */
     fun deleteThings(
         simConfigMap: Map<String, S3Storage.Companion.BucketAndKey>,
         policyName: String = DEFAULT_POLICY_NAME,
+        deletePolicy: Boolean = false
     ): ThingOperationStatus {
         val deleteThingResponse = runBlocking {
             simConfigMap.map {
@@ -231,7 +234,14 @@ class IoTThingManager(private var client: IotClient, private val s3Storage: S3St
             s3Storage.deleteObjects(it.key, it.value)
         }
         runBlocking {
-            deletePolicy(policyName, deleteThingResponse.values.flatten().toSet())
+            if (deletePolicy) {
+                try {
+                    deletePolicy(policyName)
+                } catch (ex: ResourceNotFoundException) {
+                    // If raise exception policy not found, we should log it as Error but continue the clean up
+                    println("Policy $policyName not found during deletion attempt")
+                }
+            }
             deleteCerts(deleteThingResponse.values.flatten().toSet())
         }
         val deletedThings = deleteThingResponse.keys.toList()

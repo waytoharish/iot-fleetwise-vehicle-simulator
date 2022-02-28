@@ -278,7 +278,7 @@ internal class IoTThingManagerTest {
 
     @Test
     fun `When deleteThings called with IoT Thing, cert and key deleted`() {
-        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping, deletePolicy = true) }
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
         listThingPrincipalRequestSlot.map {
@@ -371,7 +371,7 @@ internal class IoTThingManagerTest {
         every {
             ioTClient.deletePolicy(capture(deletePolicyRequest))
         } throws ResourceNotFoundException.builder().build()
-        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping, deletePolicy = true) }
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
     }
