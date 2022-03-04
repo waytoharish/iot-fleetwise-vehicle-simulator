@@ -1,15 +1,36 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig
 
+import com.amazonaws.iot.autobahn.config.ControlPlaneResources
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 internal class EdgeConfigProcessorTest {
-    private val edgeConfigProcessor = EdgeConfigProcessor()
+    private val controlPlaneResources = mockk<ControlPlaneResources>()
+    private val edgeConfigProcessor = EdgeConfigProcessor(controlPlaneResources, jacksonObjectMapper())
+
+    @BeforeEach
+    fun setup() {
+        every {
+            controlPlaneResources.getCheckinTopic(any())
+        } returns "checkin-topic"
+        every {
+            controlPlaneResources.getPolicyTopic(any())
+        } returns "collection-scheme-topic"
+        every {
+            controlPlaneResources.getDecoderManifestTopic(any())
+        } returns "decoder-manifest-topic"
+        every {
+            controlPlaneResources.getSignalsTopic(any())
+        } returns "signal-topic"
+    }
 
     @Test
     fun `When setMqttConnectionParameter called with valid config files`() {
@@ -36,29 +57,28 @@ internal class EdgeConfigProcessorTest {
                 }
             }"""
         val vehicleIDs = listOf("car1", "car2", "car3", "car4")
-        val originalConfigFile = vehicleIDs.associateWith { configJson }
+        val inputConfigFileMap = vehicleIDs.associateWith { configJson }
         // Invoke Function to set MQTT Connection Section to the config based on Gamma PDX template
         edgeConfigProcessor.setMqttConnectionParameter(
-            jacksonObjectMapper(),
-            originalConfigFile,
+            inputConfigFileMap,
             "IoTCoreDataEndPointAddress",
-            "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/collection_schemes",
-            "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/decoder_manifests",
-            "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/signals",
-            "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/checkins",
-            "/etc/aws-iot-fleetwise-sim/\$VEHICLE_ID/cert.crt",
-            "/etc/aws-iot-fleetwise-sim/\$VEHICLE_ID/pri.key"
         ).map {
             val processedConfig: Config = jacksonObjectMapper().readValue(it.value)
-            val processedMqttConnection = processedConfig.staticConfig.mqttConnection
+            val processedMqttConnection = processedConfig.staticConfig.mqttConnectionConfig
             Assertions.assertEquals(it.key, processedMqttConnection.clientId)
             Assertions.assertEquals("IoTCoreDataEndPointAddress", processedMqttConnection.endPointUrl)
-            Assertions.assertEquals("\$aws/iotfleetwise/gamma-us-east-1/vehicles/${it.key}/collection_schemes", processedMqttConnection.collectionSchemeListTopic)
-            Assertions.assertEquals("\$aws/iotfleetwise/gamma-us-east-1/vehicles/${it.key}/decoder_manifests", processedMqttConnection.decoderManifestTopic)
-            Assertions.assertEquals("\$aws/iotfleetwise/gamma-us-east-1/vehicles/${it.key}/signals", processedMqttConnection.canDataTopic)
-            Assertions.assertEquals("\$aws/iotfleetwise/gamma-us-east-1/vehicles/${it.key}/checkins", processedMqttConnection.checkinTopic)
-            Assertions.assertEquals("/etc/aws-iot-fleetwise-sim/${it.key}/cert.crt", processedMqttConnection.certificateFilename)
-            Assertions.assertEquals("/etc/aws-iot-fleetwise-sim/${it.key}/pri.key", processedMqttConnection.privateKeyFilename)
+            Assertions.assertEquals("collection-scheme-topic", processedMqttConnection.collectionSchemeListTopic)
+            Assertions.assertEquals("decoder-manifest-topic", processedMqttConnection.decoderManifestTopic)
+            Assertions.assertEquals("signal-topic", processedMqttConnection.canDataTopic)
+            Assertions.assertEquals("checkin-topic", processedMqttConnection.checkinTopic)
+            Assertions.assertEquals(
+                EdgeConfigProcessor.CERTIFICATE_FILE_NAME.replace("VEHICLE_ID", it.key),
+                processedMqttConnection.certificateFilename
+            )
+            Assertions.assertEquals(
+                EdgeConfigProcessor.PRIVATE_KEY_FILE_NAME.replace("VEHICLE_ID", it.key),
+                processedMqttConnection.privateKeyFilename
+            )
         }
     }
 
@@ -86,20 +106,13 @@ internal class EdgeConfigProcessorTest {
                 }
             }"""
         val vehicleIDs = listOf("car1", "car2", "car3", "car4")
-        var originalConfigFile = vehicleIDs.associateWith {
+        val originalConfigFile = vehicleIDs.associateWith {
             configJson
         }
         assertThrows<MissingKotlinParameterException> {
             edgeConfigProcessor.setMqttConnectionParameter(
-                jacksonObjectMapper(),
                 originalConfigFile,
                 "IoTCoreDataEndPointAddress",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/collection_schemes",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/decoder_manifests",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/signals",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/checkins",
-                "/etc/aws-iot-fleetwise-sim/\$VEHICLE_ID/cert.crt",
-                "/etc/aws-iot-fleetwise-sim/\$VEHICLE_ID/pri.key"
             )
         }
     }
@@ -135,15 +148,8 @@ internal class EdgeConfigProcessorTest {
         }
         assertThrows<UnrecognizedPropertyException> {
             edgeConfigProcessor.setMqttConnectionParameter(
-                jacksonObjectMapper(),
                 originalConfigFile,
                 "IoTCoreDataEndPointAddress",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/collection_schemes",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/decoder_manifests",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/signals",
-                "\$aws/iotfleetwise/gamma-us-east-1/vehicles/\$VEHICLE_ID/checkins",
-                "/etc/aws-iot-fleetwise-sim/\$VEHICLE_ID/cert.crt",
-                "/etc/aws-iot-fleetwise-sim/\$VEHICLE_ID/pri.key"
             )
         }
     }

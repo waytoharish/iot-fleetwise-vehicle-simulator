@@ -27,10 +27,10 @@ data class StaticConfig(
     @JsonProperty("publishToCloudParameters")
     val publishToCloudParameters: Any,
     @JsonProperty("mqttConnection")
-    val mqttConnection: MqttConnection
+    val mqttConnectionConfig: MqttConnectionConfig
 )
 
-data class MqttConnection(
+data class MqttConnectionConfig(
     @JsonProperty("endpointUrl")
     val endPointUrl: String,
     @JsonProperty("clientId")
