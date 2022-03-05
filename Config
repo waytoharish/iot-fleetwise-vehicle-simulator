@@ -25,6 +25,7 @@ package.IoTAutobahnVehicleSimulator = {
             KotlinxCoroutinesJdk8 = 1.4.x;
             Jackson-annotations = 2.12.x;
             Jackson-module-kotlin = 2.12.x;
+            KotlinxCoroutinesTest = 1.4.x;
             Picocli = 4.x;
             AwsJavaSdk-Ecs = 2.0;
             AwsJavaSdk-S3 = 2.0;
@@ -53,6 +54,7 @@ package.IoTAutobahnVehicleSimulator = {
             # dependencies so only the Kotlin 1.4 JARs get packaged.
             Maven-org-jetbrains-kotlin_kotlin-stdlib = 1.x;
             Maven-org-jetbrains-kotlin_kotlin-stdlib-common = 1.x;
+            KotlinxCoroutinesDebug = 1.4.x;
         };
     };
 

@@ -1,9 +1,9 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
-import io.mockk.every
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
-import io.mockk.verify
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 
@@ -18,13 +18,13 @@ class UploadToS3CommandTest {
         command.key = "some-key"
         command.data = "some-data"
 
-        every {
+        coEvery {
             s3Storage.put(any(), any(), any())
         } returns Unit
 
         val result = command.call()
 
         Assertions.assertEquals(0, result)
-        verify(exactly = 1) { s3Storage.put(command.bucket, command.key, command.data.toByteArray(Charsets.UTF_8)) }
+        coVerify(exactly = 1) { s3Storage.put(command.bucket, command.key, command.data.toByteArray(Charsets.UTF_8)) }
     }
 }

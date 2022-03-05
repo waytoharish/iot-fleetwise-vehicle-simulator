@@ -4,7 +4,7 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.S3AsyncClient
 import java.util.concurrent.Callable
 
 @Command(
@@ -14,7 +14,7 @@ import java.util.concurrent.Callable
 class UploadToS3Command(private val s3Storage: S3Storage) : Callable<Int> {
 
     constructor() : this(
-        S3Storage(S3Client.builder().region(Region.US_WEST_2).build())
+        S3Storage(S3AsyncClient.builder().region(Region.US_WEST_2).build())
     )
 
     @CommandLine.Option(required = true, names = ["--bucket", "-b"])

@@ -4,15 +4,19 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.PRIVATE_KEY_FILE_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
-import io.mockk.verify
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runBlockingTest
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import software.amazon.awssdk.services.iot.IotClient
+import org.junit.jupiter.api.assertThrows
+import software.amazon.awssdk.services.iot.IotAsyncClient
 import software.amazon.awssdk.services.iot.model.AttachPolicyRequest
 import software.amazon.awssdk.services.iot.model.AttachPolicyResponse
 import software.amazon.awssdk.services.iot.model.AttachThingPrincipalRequest
@@ -25,6 +29,7 @@ import software.amazon.awssdk.services.iot.model.CreateThingRequest
 import software.amazon.awssdk.services.iot.model.CreateThingResponse
 import software.amazon.awssdk.services.iot.model.DeleteCertificateRequest
 import software.amazon.awssdk.services.iot.model.DeleteCertificateResponse
+import software.amazon.awssdk.services.iot.model.DeleteConflictException
 import software.amazon.awssdk.services.iot.model.DeletePolicyRequest
 import software.amazon.awssdk.services.iot.model.DeletePolicyResponse
 import software.amazon.awssdk.services.iot.model.DeleteThingRequest
@@ -44,10 +49,11 @@ import software.amazon.awssdk.services.iot.model.ResourceAlreadyExistsException
 import software.amazon.awssdk.services.iot.model.ResourceNotFoundException
 import software.amazon.awssdk.services.iot.model.UpdateCertificateRequest
 import software.amazon.awssdk.services.iot.model.UpdateCertificateResponse
+import java.util.concurrent.CompletableFuture
 import java.util.function.Consumer
 
 internal class IoTThingManagerTest {
-    private val ioTClient = mockk<IotClient>()
+    private val ioTClient = mockk<IotAsyncClient>()
 
     private val s3Storage = mockk<S3Storage>()
 
@@ -78,30 +84,31 @@ internal class IoTThingManagerTest {
 
     @BeforeEach
     fun setup() {
+        println("start setting up")
         // Mock for S3 Storage
-        every {
+        coEvery {
             s3Storage.put(any(), any(), any())
         } returns Unit
 
-        every {
+        coEvery {
             s3Storage.deleteObjects(any(), any())
         } returns Unit
 
         // Mock IoT API calls
         every {
             ioTClient.createThing(capture(createThingRequestSlot))
-        } returns CreateThingResponse.builder().build()
+        } returns CompletableFuture.completedFuture(CreateThingResponse.builder().build())
 
         every {
             ioTClient.createPolicy(capture(createPolicyRequestSlot))
-        } returnsMany carList.map {
+        } returns CompletableFuture.completedFuture(
             CreatePolicyResponse.builder()
-                .policyName("vehicle-simulator-policy").build()
-        }
+                .policyName(DEFAULT_POLICY_NAME).build()
+        )
 
         every {
             ioTClient.createKeysAndCertificate(capture(createKeysAndCertificateRequestSlot))
-        } returns
+        } returns CompletableFuture.completedFuture(
             CreateKeysAndCertificateResponse.builder()
                 .certificateArn("certificate arn")
                 .certificatePem("certificate")
@@ -111,57 +118,60 @@ internal class IoTThingManagerTest {
                         .publicKey("public key")
                         .build()
                 }.build()
+        )
 
         every {
             ioTClient.attachPolicy(capture(attachPolicyRequestSlot))
-        } returns AttachPolicyResponse.builder().build()
+        } returns CompletableFuture.completedFuture(AttachPolicyResponse.builder().build())
 
         every {
             ioTClient.attachThingPrincipal(capture(attachThingPrincipalRequestSlot))
-        } returns AttachThingPrincipalResponse.builder().build()
+        } returns CompletableFuture.completedFuture(AttachThingPrincipalResponse.builder().build())
 
         every {
             ioTClient.listThingPrincipals(capture(listThingPrincipalRequestSlot))
         } returnsMany carList.map {
-            ListThingPrincipalsResponse.builder().principals("principal/$it").build()
+            CompletableFuture.completedFuture(ListThingPrincipalsResponse.builder().principals("principal/$it").build())
         }
 
         every {
             ioTClient.detachThingPrincipal(capture(detachThingPrincipalRequest))
-        } returns DetachThingPrincipalResponse.builder().build()
+        } returns CompletableFuture.completedFuture(DetachThingPrincipalResponse.builder().build())
 
         every {
             ioTClient.detachPolicy(capture(detachPolicyRequest))
-        } returns DetachPolicyResponse.builder().build()
+        } returns CompletableFuture.completedFuture(DetachPolicyResponse.builder().build())
 
         every {
             ioTClient.updateCertificate(capture(updateCertificateRequest))
-        } returns UpdateCertificateResponse.builder().build()
+        } returns CompletableFuture.completedFuture(UpdateCertificateResponse.builder().build())
 
         every {
             ioTClient.deleteCertificate(capture(deleteCertificateRequest))
-        } returns DeleteCertificateResponse.builder().build()
+        } returns CompletableFuture.completedFuture(DeleteCertificateResponse.builder().build())
 
         every {
             ioTClient.deleteThing(capture(deleteThingRequest))
-        } returns DeleteThingResponse.builder().build()
+        } returns CompletableFuture.completedFuture(DeleteThingResponse.builder().build())
 
         every {
             ioTClient.deletePolicy(capture(deletePolicyRequest))
-        } returns DeletePolicyResponse.builder().build()
+        } returns CompletableFuture.completedFuture(DeletePolicyResponse.builder().build())
 
         every {
             ioTClient.listTargetsForPolicy(capture(listTargetsForPolicyRequest))
-        } returns ListTargetsForPolicyResponse.builder().targets(listOf("cert")).build()
+        } returns CompletableFuture.completedFuture(ListTargetsForPolicyResponse.builder().targets(listOf("cert")).build())
 
         every {
             ioTClient.describeEndpoint(capture(describeEndPointRequest))
-        } returns DescribeEndpointResponse.builder().endpointAddress("endpointAddress").build()
+        } returns CompletableFuture.completedFuture(DescribeEndpointResponse.builder().endpointAddress("endpointAddress").build())
     }
 
     @Test
     fun `When createAndStoreThings called with IoT Thing successfully created and stored`() {
-        val result = runBlocking { iotThingManager.createAndStoreThings(simulationMapping) }
+        val result = runBlocking(Dispatchers.IO) {
+            iotThingManager.createAndStoreThings(simulationMapping)
+        }
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
 
@@ -196,18 +206,18 @@ internal class IoTThingManagerTest {
         }
         // Verify the S3 Storage API is invoked correctly
         listOf("car0", "car1").forEach {
-            verify(exactly = 1) {
+            coVerify(exactly = 1) {
                 s3Storage.put("test_bucket_a", "$it/$CERTIFICATE_FILE_NAME", "certificate".toByteArray())
             }
-            verify(exactly = 1) {
+            coVerify(exactly = 1) {
                 s3Storage.put("test_bucket_a", "$it/$PRIVATE_KEY_FILE_NAME", "private key".toByteArray())
             }
         }
         listOf("car2", "car3").forEach {
-            verify(exactly = 1) {
+            coVerify(exactly = 1) {
                 s3Storage.put("test_bucket_b", "$it/$CERTIFICATE_FILE_NAME", "certificate".toByteArray())
             }
-            verify(exactly = 1) {
+            coVerify(exactly = 1) {
                 s3Storage.put("test_bucket_b", "$it/$PRIVATE_KEY_FILE_NAME", "private key".toByteArray())
             }
         }
@@ -219,10 +229,12 @@ internal class IoTThingManagerTest {
         every {
             ioTClient.createThing(capture(createThingRequestSlot))
         } throws ResourceAlreadyExistsException.builder().build() andThen
-            CreateThingResponse.builder().build() andThenThrows
+            CompletableFuture.completedFuture(CreateThingResponse.builder().build()) andThenThrows
             ResourceAlreadyExistsException.builder().build() andThen
-            CreateThingResponse.builder().build()
-        val result = runBlocking { iotThingManager.createAndStoreThings(simulationMapping) }
+            CompletableFuture.completedFuture(CreateThingResponse.builder().build())
+        val result = runBlocking(Dispatchers.IO) {
+            iotThingManager.createAndStoreThings(simulationMapping)
+        }
         var recreatedCarList = deleteThingRequest.map {
             val builder = DeleteThingRequest.builder()
             it.accept(builder)
@@ -246,9 +258,11 @@ internal class IoTThingManagerTest {
         every {
             ioTClient.createPolicy(capture(createPolicyRequestSlot))
         } throws ResourceAlreadyExistsException.builder().build() andThen
-            CreatePolicyResponse.builder().policyName(DEFAULT_POLICY_NAME).build()
+            CompletableFuture.completedFuture(CreatePolicyResponse.builder().policyName(DEFAULT_POLICY_NAME).build())
         // We set the flag to recreate policy if exists
-        val result = iotThingManager.createAndStoreThings(simulationMapping, recreatePolicyIfAlreadyExists = true)
+        val result = runBlocking(Dispatchers.IO) {
+            iotThingManager.createAndStoreThings(simulationMapping, recreatePolicyIfAlreadyExists = true)
+        }
         createPolicyRequestSlot.map {
             val builder = CreatePolicyRequest.builder()
             it.accept(builder)
@@ -264,9 +278,11 @@ internal class IoTThingManagerTest {
         every {
             ioTClient.createPolicy(capture(createPolicyRequestSlot))
         } throws ResourceAlreadyExistsException.builder().build() andThen
-            CreatePolicyResponse.builder().policyName(DEFAULT_POLICY_NAME).build()
+            CompletableFuture.completedFuture(CreatePolicyResponse.builder().policyName(DEFAULT_POLICY_NAME).build())
         // We set the flag to recreate policy if exists
-        val result = iotThingManager.createAndStoreThings(simulationMapping, recreatePolicyIfAlreadyExists = false)
+        val result = runBlocking(Dispatchers.IO) {
+            iotThingManager.createAndStoreThings(simulationMapping, recreatePolicyIfAlreadyExists = false)
+        }
         createPolicyRequestSlot.map {
             val builder = CreatePolicyRequest.builder()
             it.accept(builder)
@@ -295,11 +311,16 @@ internal class IoTThingManagerTest {
         }.forEachIndexed { index, element ->
             Assertions.assertEquals(carList[index], element)
         }
+        listTargetsForPolicyRequest.map {
+            val builder = ListTargetsForPolicyRequest.builder()
+            it.accept(builder)
+            builder.build().policyName()
+        }.map { Assertions.assertEquals(DEFAULT_POLICY_NAME, it) }
         detachPolicyRequest.map {
             val builder = DetachPolicyRequest.builder()
             it.accept(builder)
             builder.build().policyName()
-        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
+        }.map { Assertions.assertEquals(DEFAULT_POLICY_NAME, it) }
         updateCertificateRequest.map {
             val builder = UpdateCertificateRequest.builder()
             it.accept(builder)
@@ -319,7 +340,7 @@ internal class IoTThingManagerTest {
         }.forEachIndexed { index, element ->
             Assertions.assertEquals(carList[index], element)
         }
-        verify(exactly = 1) {
+        coVerify(exactly = 1) {
             s3Storage.deleteObjects(
                 "test_bucket_a",
                 listOf("car0", "car1").flatMap {
@@ -327,7 +348,7 @@ internal class IoTThingManagerTest {
                 }
             )
         }
-        verify(exactly = 1) {
+        coVerify(exactly = 1) {
             s3Storage.deleteObjects(
                 "test_bucket_b",
                 listOf("car2", "car3").flatMap {
@@ -339,7 +360,7 @@ internal class IoTThingManagerTest {
             val builder = DeletePolicyRequest.builder()
             it.accept(builder)
             builder.build().policyName()
-        }.map { Assertions.assertEquals("vehicle-simulator-policy", it) }
+        }.map { Assertions.assertEquals(DEFAULT_POLICY_NAME, it) }
     }
 
     @Test
@@ -360,8 +381,9 @@ internal class IoTThingManagerTest {
         // Mock InvalidRequestException first. The code will retry and succeed
         every {
             ioTClient.deleteThing(capture(deleteThingRequest))
-        } throws InvalidRequestException.builder().build() andThen DeleteThingResponse.builder().build()
-        val result = iotThingManager.deleteThings(simulationMapping)
+        } throws InvalidRequestException.builder().build() andThen
+            CompletableFuture.completedFuture(DeleteThingResponse.builder().build())
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
     }
@@ -376,9 +398,33 @@ internal class IoTThingManagerTest {
         Assertions.assertEquals(0, result.failedList.size)
     }
 
+    @kotlinx.coroutines.ExperimentalCoroutinesApi
+    @Test
+    fun `When deleteThings called with iotClient deleteThing failed all the retries`() {
+        every {
+            ioTClient.deleteThing(capture(deleteThingRequest))
+        } throws InvalidRequestException.builder().build()
+        assertThrows<InvalidRequestException> {
+            runBlockingTest {
+                iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
+            }
+        }
+    }
+
+    @kotlinx.coroutines.ExperimentalCoroutinesApi
+    @Test
+    fun `When deleteThings called with iotClient deleteCertificate failed all the retries`() {
+        every {
+            ioTClient.deleteCertificate(capture(deleteCertificateRequest))
+        } throws DeleteConflictException.builder().build()
+        runBlockingTest {
+            iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
+        }
+    }
+
     @Test
     fun getIoTCoreDataEndPoint() {
-        val endpointAddress = iotThingManager.getIoTCoreDataEndPoint()
+        val endpointAddress = runBlocking(Dispatchers.IO) { iotThingManager.getIoTCoreDataEndPoint() }
         describeEndPointRequest.map {
             val builder = DescribeEndpointRequest.builder()
             it.accept(builder)
