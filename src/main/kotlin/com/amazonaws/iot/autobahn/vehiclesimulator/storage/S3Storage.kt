@@ -17,7 +17,7 @@ class S3Storage(private var client: S3AsyncClient) {
     }
 
     suspend fun deleteObjects(bucket: String, keyList: List<String>) {
-        // As maximum number of objects per IoTClient deleteObjects API can handle is 1000. Need to chunk the list
+        // As maximum number of objects per S3Client deleteObjects API can handle is 1000. Need to chunk the list
         // if list length is larger than 1000
         keyList.chunked(MAX_NUM_OF_OBJECTS_PER_DELETION)
             .map { chunkedKeyList ->

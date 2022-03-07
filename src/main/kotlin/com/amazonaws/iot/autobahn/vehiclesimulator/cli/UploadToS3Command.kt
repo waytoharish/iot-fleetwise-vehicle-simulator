@@ -1,6 +1,8 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import software.amazon.awssdk.regions.Region
@@ -27,7 +29,7 @@ class UploadToS3Command(private val s3Storage: S3Storage) : Callable<Int> {
     lateinit var data: String
 
     override fun call(): Int {
-        s3Storage.put(bucket, key, data.toByteArray(Charsets.UTF_8))
+        runBlocking(Dispatchers.IO) { s3Storage.put(bucket, key, data.toByteArray(Charsets.UTF_8)) }
         println("Successfully uploaded!")
         return 0
     }
