@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException
 import com.fasterxml.jackson.module.kotlin.readValue
+import org.slf4j.LoggerFactory
 
 /**
  * This class process Edge Config file
@@ -15,6 +16,7 @@ class EdgeConfigProcessor(
     private val controlPlaneResources: ControlPlaneResources,
     private val objectMapper: ObjectMapper
 ) {
+    private val log = LoggerFactory.getLogger(EdgeConfigProcessor::class.java)
     /**
      * This function sets the MQTT Connection parameter for Edge config file
      * The MQTT Connection depends on vehicle ID, FleetWise test environment
@@ -23,6 +25,7 @@ class EdgeConfigProcessor(
      * @param iotCoreDeviceDataEndPoint IoT Core Device Data End Point
      * @return Map contains vehicleID and config file filled with mqtt connection parameter
      * @throws MissingKotlinParameterException if user provided config file miss parameter
+     * @throws UnrecognizedPropertyException if user provided config file include unknown parameter
      */
     fun setMqttConnectionParameter(
         vehicleIDToConfigMap: Map<String, String>,
@@ -43,10 +46,10 @@ class EdgeConfigProcessor(
             val inputConfig: Config = try {
                 objectMapper.readValue(it.value)
             } catch (ex: MissingKotlinParameterException) {
-                println("Config File misses Parameter for ${it.key}. Config file: ${it.value}")
+                log.error("Config File misses Parameter for ${it.key}. Config file: ${it.value}")
                 throw ex
             } catch (ex: UnrecognizedPropertyException) {
-                println("Config File contains unknown parameter for ${it.key}. Config file: ${it.value}")
+                log.error("Config File contains unknown parameter for ${it.key}. Config file: ${it.value}")
                 throw ex
             }
             // construct output config with the mqttConnection
