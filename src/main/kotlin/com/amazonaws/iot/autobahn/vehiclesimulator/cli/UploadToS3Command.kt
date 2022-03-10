@@ -13,12 +13,7 @@ import java.util.concurrent.Callable
     name = "upload",
     description = ["Uploads something to S3"],
 )
-class UploadToS3Command(private val s3Storage: S3Storage) : Callable<Int> {
-
-    constructor() : this(
-        S3Storage(S3AsyncClient.builder().region(Region.US_WEST_2).build())
-    )
-
+class UploadToS3Command() : Callable<Int> {
     @CommandLine.Option(required = true, names = ["--bucket", "-b"])
     lateinit var bucket: String
 
@@ -28,7 +23,11 @@ class UploadToS3Command(private val s3Storage: S3Storage) : Callable<Int> {
     @CommandLine.Option(required = true, names = ["--data", "-d"])
     lateinit var data: String
 
+    @CommandLine.Option(required = true, names = ["--region", "-r"])
+    lateinit var region: String
+
     override fun call(): Int {
+        val s3Storage = S3Storage(S3AsyncClient.builder().region(Region.of(region)).build())
         runBlocking(Dispatchers.IO) { s3Storage.put(bucket, key, data.toByteArray(Charsets.UTF_8)) }
         println("Successfully uploaded!")
         return 0

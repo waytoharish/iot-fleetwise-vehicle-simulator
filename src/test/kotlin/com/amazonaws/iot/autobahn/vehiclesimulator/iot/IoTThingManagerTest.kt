@@ -1,5 +1,6 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.iot
 
+import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.CertificateDeletionException
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.CERTIFICATE_FILE_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.PRIVATE_KEY_FILE_NAME
@@ -59,7 +60,7 @@ internal class IoTThingManagerTest {
 
     private val iotThingManager = IoTThingManager(ioTClient, s3Storage)
 
-    private val carList = listOf("car0", "car1", "car2", "car3")
+    private val carList = setOf("car0", "car1", "car2", "car3")
 
     private val simulationMapping = listOf("car0", "car1").associateWith {
         S3Storage.Companion.BucketAndKey("test_bucket_a", it)
@@ -172,16 +173,17 @@ internal class IoTThingManagerTest {
         val result = runBlocking(Dispatchers.IO) {
             iotThingManager.createAndStoreThings(simulationMapping)
         }
-        Assertions.assertEquals(carList, result.successList)
+        Assertions.assertTrue(carList == result.successList)
         Assertions.assertEquals(0, result.failedList.size)
 
-        createThingRequestSlot.map {
-            val builder = CreateThingRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals("car$index", element)
-        }
+        Assertions.assertTrue(
+            carList ==
+                createThingRequestSlot.map {
+                    val builder = CreateThingRequest.builder()
+                    it.accept(builder)
+                    builder.build().thingName()
+                }.toSet()
+        )
         createPolicyRequestSlot.map {
             val builder = CreatePolicyRequest.builder()
             it.accept(builder)
@@ -197,13 +199,14 @@ internal class IoTThingManagerTest {
             it.accept(builder)
             builder.build().policyName()
         }.map { Assertions.assertEquals(DEFAULT_POLICY_NAME, it) }
-        attachThingPrincipalRequestSlot.map {
-            val builder = AttachThingPrincipalRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals("car$index", element)
-        }
+        Assertions.assertTrue(
+            carList ==
+                attachThingPrincipalRequestSlot.map {
+                    val builder = AttachThingPrincipalRequest.builder()
+                    it.accept(builder)
+                    builder.build().thingName()
+                }.toSet()
+        )
         // Verify the S3 Storage API is invoked correctly
         listOf("car0", "car1").forEach {
             coVerify(exactly = 1) {
@@ -235,21 +238,64 @@ internal class IoTThingManagerTest {
         val result = runBlocking(Dispatchers.IO) {
             iotThingManager.createAndStoreThings(simulationMapping)
         }
-        var recreatedCarList = deleteThingRequest.map {
-            val builder = DeleteThingRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }
-        Assertions.assertEquals(listOf("car0", "car1"), recreatedCarList)
-        recreatedCarList = createThingRequestSlot.map {
-            val builder = CreateThingRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }
-        // There would be two call for car0 and car1. The first call raise exception, the second call after deletion.
-        Assertions.assertEquals(listOf("car0", "car0", "car1", "car1", "car2", "car3"), recreatedCarList)
+        // We shall expect two re-creation Thing as we mock createThing to throw ResourceAlreadyExists twice
+        Assertions.assertEquals(
+            2,
+            deleteThingRequest.map {
+                val builder = DeleteThingRequest.builder()
+                it.accept(builder)
+                builder.build().thingName()
+            }.size
+        )
+        // There would be two additional call due to recreation. The first call raise exception, the second call after deletion.
+        Assertions.assertEquals(
+            carList.size + 2,
+            createThingRequestSlot.map {
+                val builder = CreateThingRequest.builder()
+                it.accept(builder)
+                builder.build().thingName()
+            }.size
+        )
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
+    }
+
+    @kotlinx.coroutines.ExperimentalCoroutinesApi
+    @Test
+    fun `When createAndStoreThings called with IoT Thing already exist and IoT Thing deletion failed`() {
+        // Here we mock car1 and car2 already exist. The createThing will throw resource exist exception
+        every {
+            ioTClient.createThing(capture(createThingRequestSlot))
+        } throws ResourceAlreadyExistsException.builder().build() andThen
+            CompletableFuture.completedFuture(CreateThingResponse.builder().build()) andThenThrows
+            ResourceAlreadyExistsException.builder().build() andThen
+            CompletableFuture.completedFuture(CreateThingResponse.builder().build())
+        // Here we mock the deleteThing will raise exception as failure
+        every {
+            ioTClient.deleteThing(capture(deleteThingRequest))
+        } throws InvalidRequestException.builder().build()
+        // Even though re-creation didn't go through, we still have things available.
+        runBlockingTest {
+            iotThingManager.createAndStoreThings(simulationMapping)
+        }
+        // We mock deleteThing always fail and there are 10 retries for each deleteThing. Hence total is 2 * 10
+        Assertions.assertEquals(
+            20,
+            deleteThingRequest.map {
+                val builder = DeleteThingRequest.builder()
+                it.accept(builder)
+                builder.build().thingName()
+            }.size
+        )
+        // The deletion didn't go through, so overall createThing API call should match with number of things
+        Assertions.assertEquals(
+            carList.size,
+            createThingRequestSlot.map {
+                val builder = CreateThingRequest.builder()
+                it.accept(builder)
+                builder.build().thingName()
+            }.size
+        )
     }
 
     @Test
@@ -295,22 +341,24 @@ internal class IoTThingManagerTest {
     @Test
     fun `When deleteThings called with IoT Thing, cert and key deleted`() {
         val result = runBlocking { iotThingManager.deleteThings(simulationMapping, deletePolicy = true) }
-        Assertions.assertEquals(carList, result.successList)
+        Assertions.assertTrue(carList == result.successList)
         Assertions.assertEquals(0, result.failedList.size)
-        listThingPrincipalRequestSlot.map {
-            val builder = ListThingPrincipalsRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals(carList[index], element)
-        }
-        detachThingPrincipalRequest.map {
-            val builder = DetachThingPrincipalRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals(carList[index], element)
-        }
+        Assertions.assertTrue(
+            carList ==
+                listThingPrincipalRequestSlot.map {
+                    val builder = ListThingPrincipalsRequest.builder()
+                    it.accept(builder)
+                    builder.build().thingName()
+                }.toSet()
+        )
+        Assertions.assertTrue(
+            carList ==
+                detachThingPrincipalRequest.map {
+                    val builder = DetachThingPrincipalRequest.builder()
+                    it.accept(builder)
+                    builder.build().thingName()
+                }.toSet()
+        )
         listTargetsForPolicyRequest.map {
             val builder = ListTargetsForPolicyRequest.builder()
             it.accept(builder)
@@ -326,20 +374,22 @@ internal class IoTThingManagerTest {
             it.accept(builder)
             builder.build().newStatusAsString()
         }.forEach { Assertions.assertEquals("INACTIVE", it) }
-        deleteCertificateRequest.map {
-            val builder = DeleteCertificateRequest.builder()
-            it.accept(builder)
-            builder.build().certificateId()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals(carList[index], element)
-        }
-        deleteThingRequest.map {
-            val builder = DeleteThingRequest.builder()
-            it.accept(builder)
-            builder.build().thingName()
-        }.forEachIndexed { index, element ->
-            Assertions.assertEquals(carList[index], element)
-        }
+        Assertions.assertTrue(
+            carList ==
+                deleteCertificateRequest.map {
+                    val builder = DeleteCertificateRequest.builder()
+                    it.accept(builder)
+                    builder.build().certificateId()
+                }.toSet()
+        )
+        Assertions.assertTrue(
+            carList ==
+                deleteThingRequest.map {
+                    val builder = DeleteThingRequest.builder()
+                    it.accept(builder)
+                    builder.build().thingName()
+                }.toSet()
+        )
         coVerify(exactly = 1) {
             s3Storage.deleteObjects(
                 "test_bucket_a",
@@ -404,10 +454,8 @@ internal class IoTThingManagerTest {
         every {
             ioTClient.deleteThing(capture(deleteThingRequest))
         } throws InvalidRequestException.builder().build()
-        assertThrows<InvalidRequestException> {
-            runBlockingTest {
-                iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
-            }
+        runBlockingTest {
+            iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
         }
     }
 
@@ -417,8 +465,10 @@ internal class IoTThingManagerTest {
         every {
             ioTClient.deleteCertificate(capture(deleteCertificateRequest))
         } throws DeleteConflictException.builder().build()
-        runBlockingTest {
-            iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
+        assertThrows<CertificateDeletionException> {
+            runBlockingTest {
+                iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
+            }
         }
     }
 
