@@ -4,6 +4,7 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockkConstructor
+import io.mockk.unmockkConstructor
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 
@@ -25,5 +26,6 @@ class UploadToS3CommandTest {
 
         Assertions.assertEquals(0, result)
         coVerify(exactly = 1) { anyConstructed<S3Storage>().put(command.bucket, command.key, command.data.toByteArray(Charsets.UTF_8)) }
+        unmockkConstructor(S3Storage::class)
     }
 }

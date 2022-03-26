@@ -129,6 +129,22 @@ compileTestKotlin {
     }
 }
 
+configurations {
+    componentTestCompileOnly.extendsFrom testCompileOnly
+    componentTestImplementation.extendsFrom testImplementation
+}
+
+def configurationFiles = copySpec {
+    from("${brazilGradle.path('package-src-root')}/configuration") {
+        include '**/*'
+    }
+}
+
+task copyConfigurationToBuild(type: Copy) {
+    into "${brazilGradle.buildDir}"
+    with configurationFiles
+}
+
 /*
  Specifies that JUnit Platform (a.k.a. JUnit 5) should be used to execute tests.
 
@@ -144,6 +160,7 @@ test {
         showStandardStreams true
         exceptionFormat "full"
     }
+    systemProperty 'org.apache.logging.log4j.level', 'INFO'
 
     maxParallelForks = Runtime.runtime.availableProcessors().intdiv(2) ?: 1
 }
@@ -158,5 +175,12 @@ classes.dependsOn createProperties
 task generateCliWrapper(type: com.amazon.brazil.gradle.launcher.GenerateWrapperTask) {
     target "$brazilGradle.buildDir/bin/vehicle-simulator"
     main 'com.amazonaws.iot.autobahn.vehiclesimulator.cli.VehicleSimulatorCommand'
+
+    systemProperty 'java.util.logging.manager', "org.apache.logging.log4j.jul.LogManager"
+    systemProperty 'Log4jContextSelector', "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector"
+    systemProperty 'log4j.configurationFile', 'file:${ENVROOT}/log-configuration/log4j2.xml', false
+    systemProperty 'org.apache.logging.log4j.level', 'INFO'
 }
+
+build.dependsOn copyConfigurationToBuild
 build.dependsOn generateCliWrapper

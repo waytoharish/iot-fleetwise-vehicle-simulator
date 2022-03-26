@@ -1,5 +1,7 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.ecs
 
+import com.amazonaws.iot.autobahn.vehiclesimulator.S3
+import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
 import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.EcsTaskManagerException
 import io.mockk.every
 import io.mockk.mockk
@@ -31,20 +33,15 @@ internal class EcsTaskManagerTest {
 
     private val ecsClient = mockk<EcsClient>()
 
-    private val ecsTaskManager = spyk(EcsTaskManager(ecsClient), recordPrivateCalls = true)
+    private val ecsTaskManager = spyk(EcsTaskManager(ecsClient, arch = "arm64"))
 
     private val waiter = mockk<WaiterResponse<DescribeTasksResponse>>()
 
-    private val oneVehicleSimulation = mapOf(
-        "car1" to "sim-url-for-car1"
-    )
+    private val oneVehicleSimulation = listOf("car1").map { SimulationMetaData(it, S3("test-bucket", it)) }
 
-    private val smallFleetSimulation = mapOf(
-        "car1" to "sim-url-for-car1",
-        "car2" to "sim-url-for-car2",
-        "car3" to "sim-url-for-car3",
-        "car4" to "sim-url-for-car4"
-    )
+    private val smallFleetSimulation = listOf("car1, car2, car3, car4").map {
+        SimulationMetaData(it, S3("test-bucket", it))
+    }
 
     // Large Fleet Testing intend to exercise ecsClient API call at least 3 loops
     private val maxNumOfTasksPerBatch = max(
@@ -54,12 +51,11 @@ internal class EcsTaskManagerTest {
     private val largeFleetSize = maxNumOfTasksPerBatch * 2 + 1
 
     // Below create a large fleet vehicle input with MAX_NUM_OF_VEHICLES_PER_TASK + 1 of vehicles
-    private val largeFleetSimulation: Map<String, String> = (1..largeFleetSize)
+    private val largeFleetSimulation = (1..largeFleetSize)
         .map { "car$it" }
-        .zip(
-            (1..largeFleetSize)
-                .map { "s3://car$it" }
-        ).toMap()
+        .map {
+            SimulationMetaData(it, S3("test-bucket", it))
+        }
 
     @Test
     fun `when runTasks with invoking ecsClient to run one tasks with capacity provider`() {
@@ -91,8 +87,10 @@ internal class EcsTaskManagerTest {
         Assertions.assertEquals(1, runTaskRequestList.captured.count())
         Assertions.assertEquals("VEHICLE_ID", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].name())
         Assertions.assertEquals("car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].value())
-        Assertions.assertEquals("SIM_PKG_URL", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].name())
-        Assertions.assertEquals("sim-url-for-car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].value())
+        Assertions.assertEquals("S3_BUCKET", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].name())
+        Assertions.assertEquals("test-bucket", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].value())
+        Assertions.assertEquals("S3_KEY", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[2].name())
+        Assertions.assertEquals("car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[2].value())
         Assertions.assertTrue(runTaskRequestList.captured.hasCapacityProviderStrategy())
         val describeTaskRequestTaskList = describeTaskRequestList.map {
             val builder = DescribeTasksRequest.builder()
@@ -107,8 +105,8 @@ internal class EcsTaskManagerTest {
             builder.build().waitTimeout()
         }[0]
         Assertions.assertEquals(5, actualWaiterOverrideConfig.get().toMinutes())
-
-        Assertions.assertEquals(expectedTaskArnList, returnedTaskArnList)
+        Assertions.assertTrue(expectedTaskArnList == returnedTaskArnList.values.toList())
+        Assertions.assertTrue(listOf("car1") == returnedTaskArnList.keys.toList())
 
         verify(exactly = 1) { ecsClient.runTask(any<RunTaskRequest>()) }
     }
@@ -143,8 +141,10 @@ internal class EcsTaskManagerTest {
         Assertions.assertEquals(1, runTaskRequestList.captured.count())
         Assertions.assertEquals("VEHICLE_ID", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].name())
         Assertions.assertEquals("car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[0].value())
-        Assertions.assertEquals("SIM_PKG_URL", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].name())
-        Assertions.assertEquals("sim-url-for-car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].value())
+        Assertions.assertEquals("S3_BUCKET", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].name())
+        Assertions.assertEquals("test-bucket", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[1].value())
+        Assertions.assertEquals("S3_KEY", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[2].name())
+        Assertions.assertEquals("car1", runTaskRequestList.captured.overrides().containerOverrides()[0].environment()[2].value())
         // We shall expect no capacity provider is used.
         Assertions.assertFalse(runTaskRequestList.captured.hasCapacityProviderStrategy())
         Assertions.assertEquals("EC2", runTaskRequestList.captured.launchTypeAsString())
@@ -161,8 +161,8 @@ internal class EcsTaskManagerTest {
             builder.build().waitTimeout()
         }[0]
         Assertions.assertEquals(5, actualWaiterOverrideConfig.get().toMinutes())
-
-        Assertions.assertEquals(expectedTaskArnList, returnedTaskArnList)
+        Assertions.assertEquals(expectedTaskArnList, returnedTaskArnList.values.toList())
+        Assertions.assertEquals(listOf("car1"), returnedTaskArnList.keys.toList())
 
         verify(exactly = 1) { ecsClient.runTask(any<RunTaskRequest>()) }
     }
@@ -281,7 +281,8 @@ internal class EcsTaskManagerTest {
         } returns waiter
 
         val returnedTaskArnList = ecsTaskManager.runTasks(largeFleetSimulation)
-        Assertions.assertTrue((1 until largeFleetSize).map { "task$it" } == returnedTaskArnList)
+        Assertions.assertTrue((1 until largeFleetSize).map { "task$it" } == returnedTaskArnList.values.toList())
+        Assertions.assertTrue((1 until largeFleetSize).map { "car$it" } == returnedTaskArnList.keys.toList())
 
         verify(exactly = largeFleetSize) { ecsClient.runTask(any<RunTaskRequest>()) }
 
@@ -368,7 +369,7 @@ internal class EcsTaskManagerTest {
     }
 
     @Test
-    fun `when stopTasks called with ecsClient stopTask raise exceptions`() {
+    fun `when stopTasks called with ecsClient stopTask raise exceptions because tasks not found`() {
         val taskIDList = listOf("task1", "task2", "task3")
 
         val stopTaskRequestList = mutableListOf<Consumer<StopTaskRequest.Builder>>()
@@ -378,14 +379,13 @@ internal class EcsTaskManagerTest {
         assertThrows<EcsTaskManagerException> {
             ecsTaskManager.stopTasks(taskIDList)
         }
+        // We mock all three tasks cannot be found in ECS
         every {
             ecsClient.stopTask(capture(stopTaskRequestList))
         } throws InvalidParameterException.builder().build()
-        val ex = assertThrows<EcsTaskManagerException> {
-            ecsTaskManager.stopTasks(taskIDList)
-        }
-        // Verify the exception contains the list of task ID that failed to stop
-        Assertions.assertEquals("Fail to stop task ID: [task1, task2, task3]", ex.message)
+        val stoppedTaskList = ecsTaskManager.stopTasks(taskIDList)
+        // We report them as stopped as tasks no longer exist in ECS
+        Assertions.assertEquals(taskIDList, stoppedTaskList)
     }
 
     @Test
@@ -416,10 +416,9 @@ internal class EcsTaskManagerTest {
             ecsClient.waiter().waitUntilTasksStopped(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
         } returns waiter
 
-        val ex = assertThrows<EcsTaskManagerException> {
-            ecsTaskManager.stopTasks(inputTaskIDList)
-        }
-        Assertions.assertEquals("Fail to stop task ID: [task2, task3, task4, task5]", ex.message)
+        val stoppedTaskList = ecsTaskManager.stopTasks(inputTaskIDList)
+        // We report them as stopped as tasks no longer exist in ECS
+        Assertions.assertEquals(listOf("task1"), stoppedTaskList)
     }
 
     @Test

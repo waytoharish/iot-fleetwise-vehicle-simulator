@@ -1,6 +1,9 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.ecs
 
+import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
 import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.EcsTaskManagerException
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.AccessDeniedException
@@ -10,30 +13,29 @@ import software.amazon.awssdk.services.ecs.model.ContainerOverride
 import software.amazon.awssdk.services.ecs.model.InvalidParameterException
 import software.amazon.awssdk.services.ecs.model.KeyValuePair
 import software.amazon.awssdk.services.ecs.model.RunTaskRequest
+import software.amazon.awssdk.services.ecs.model.Tag
 import software.amazon.awssdk.services.ecs.model.TaskOverride
 import java.time.Duration
 
 /**
- * ECS Task Manager is responsible for start / stop ECS tasks to meet client's simulation request
- *
+ * ECS Task Manager is responsible for start / stop ECS tasks to simulate FleetWise Edge agents
+ * @param ecsClient aws ecs client to access ecs functions
+ * @param arch CPU architecture for FleetWise Edge agent
+ * @param ecsClusterName cluster name
  */
 class EcsTaskManager(
     private val ecsClient: EcsClient,
-    private val ecsClusterName: String = "default"
+    private val arch: String,
+    private val ecsClusterName: String = "vehicle-simulator-$arch"
 ) {
     companion object {
-        // Below we define the CPU and Memory allocation for each FWE Process. Note this part are subject to future changes
-        // CPU allocated per FWE process. Each container can have 1024 cpu per core
-        private const val CPU_PER_FWE_PROCESS: Int = 128
-        // Memory allocated per FWE process in MiB
-        private const val MEM_PER_FWE_PROCESS: Int = 64
-
         // Per ECS service quota, only 10 tasks can be requested through runTask API. Hence, if we request to start
         // more tasks than 10, we need to loop through
         const val MAX_TASK_PER_RUN_TASK_REQUEST = 10
         // Per ECS service quota, only 100 tasks can be requested through waiter API
         const val MAX_TASK_PER_WAIT_TASK = 100
     }
+    private val log: Logger = LoggerFactory.getLogger(EcsTaskManager::class.java)
 
     /**
      * This function interacts with ECS to run tasks hosting virtual vehicles.
@@ -45,7 +47,6 @@ class EcsTaskManager(
      * @param vehicleSimulationMap: A map containing Vehicle ID to Simulation URL.
      *                              e.g: car1: S3://simulation/car1
      * @param ecsTaskDefinition: Name of task definition
-     * @param ecsContainerName: Name of Container
      * @param useCapacityProvider: Boolean flag for if using capacity provider. If not LaunchType will be used
      * @param ecsLaunchType: Launch Type when not using capacity provider
      * @param ecsCapacityProviderName: Name for capacity provider
@@ -60,33 +61,34 @@ class EcsTaskManager(
      * 5) UnsupportedOperationException raised from ECS waiter
      */
     fun runTasks(
-        vehicleSimulationMap: Map<String, String>,
-        ecsTaskDefinition: String = "fwe-with-cloudwatch-logging:7",
-        ecsContainerName: String = "fwe-container",
+        vehicleSimulationMap: List<SimulationMetaData>,
+        ecsTaskDefinition: String = "fwe-$arch-with-cw",
         useCapacityProvider: Boolean = true,
         ecsLaunchType: String = "EC2",
-        ecsCapacityProviderName: String = "fwe_simulator_ubuntu",
+        ecsCapacityProviderName: String = "ubuntu-$arch-capacity-provider",
+        tags: Map<String, String> = mapOf(),
         waiterTimeout: Duration = Duration.ofMinutes(5),
         waiterRetries: Int = 100
-    ): List<String> {
+    ): Map<String, String> {
+        log.info("run Tasks on ECS Cluster: $ecsClusterName with task definition: $ecsTaskDefinition")
+        if (useCapacityProvider) {
+            log.info("use Capacity Provider: $ecsCapacityProviderName")
+        }
         // Here we create Task per Vehicle.
-        val pendingTaskArnList = vehicleSimulationMap.flatMap { vehicleIDToSimUrl ->
+        val pendingTaskArnList = vehicleSimulationMap.associate { vehicleIDToSimUrl ->
             // We pass the vehicle ID and simulation URL through environment variable.
             val envList = listOf<KeyValuePair>(
-                KeyValuePair.builder().name("VEHICLE_ID").value(vehicleIDToSimUrl.key).build(),
-                KeyValuePair.builder().name("SIM_PKG_URL").value(vehicleIDToSimUrl.value).build()
+                KeyValuePair.builder().name("VEHICLE_ID").value(vehicleIDToSimUrl.vehicleId).build(),
+                KeyValuePair.builder().name("S3_BUCKET").value(vehicleIDToSimUrl.s3.bucket).build(),
+                KeyValuePair.builder().name("S3_KEY").value(vehicleIDToSimUrl.s3.key).build()
             )
             val containerOverride = ContainerOverride.builder()
                 .environment(envList)
-                .name(ecsContainerName)
-                .cpu(CPU_PER_FWE_PROCESS)
-                .memory(MEM_PER_FWE_PROCESS)
+                .name("fwe-$arch")
                 .build()
             // Build the task override
             val taskOverride = TaskOverride.builder()
                 .containerOverrides(listOf(containerOverride))
-                .cpu(CPU_PER_FWE_PROCESS.toString())
-                .memory(MEM_PER_FWE_PROCESS.toString())
                 .build()
             // Check whether we want to use Capacity Provider. If not, use "EC2" as launch type
             val taskBuilder = if (useCapacityProvider)
@@ -101,9 +103,11 @@ class EcsTaskManager(
                     .launchType(ecsLaunchType)
             // Build the runTaskRequest
             val runTaskRequest = taskBuilder
+                .cluster(ecsClusterName)
                 .count(1)
                 .taskDefinition(ecsTaskDefinition)
                 .overrides(taskOverride)
+                .tags(tags.map { Tag.builder().key(it.key).value(it.value).build() })
                 .build()
             val taskArnList = try {
                 ecsClient.runTask(runTaskRequest).tasks().map { it.taskArn() }
@@ -115,26 +119,26 @@ class EcsTaskManager(
                 throw EcsTaskManagerException("Access Denied Exception", ex)
             }
             if (taskArnList.size == 1) {
-                taskArnList
+                Pair(vehicleIDToSimUrl.vehicleId, taskArnList[0])
             } else {
                 throw EcsTaskManagerException("RunTaskResponse contains ${taskArnList.size} tasks: $taskArnList")
             }
         }
-        // TODO: logging framework will be integrated separately
-        println("starting Task: $pendingTaskArnList")
-        println("wait for all tasks running")
+        log.info("starting Task: $pendingTaskArnList")
+        log.info("wait for all tasks running")
         // Maximum number of tasks per ecsClient waiter is 100.
         // Hence, we need to chunk the large task lists into smaller lists before requesting wait
         // Note although the waiters runs one by one, the loop latency should be small
         // as all the tasks have already been created by runTask in previous step.
-        return pendingTaskArnList
+        // We only return the Task Arns that are successfully running
+        return pendingTaskArnList.entries
             .chunked(MAX_TASK_PER_WAIT_TASK)
-            .flatMap {
+            .flatMap { chunkedMap ->
                 val waiterResponse = try {
                     ecsClient.waiter().waitUntilTasksRunning(
                         { builder ->
                             builder.cluster(ecsClusterName)
-                                .tasks(it)
+                                .tasks(chunkedMap.map { it.value })
                                 .build()
                         },
                         { builder -> builder.waitTimeout(waiterTimeout).maxAttempts(waiterRetries).build() }
@@ -144,11 +148,12 @@ class EcsTaskManager(
                 } catch (ex: SdkClientException) {
                     throw EcsTaskManagerException("SdkClientException raised while waiting for all tasks running", ex)
                 }
+                val taskArnToVehicleIDMap = chunkedMap.associate { (k, v) -> v to k }
                 // We only return the Task Arns that are successfully running
                 waiterResponse.matched().response().get().tasks().filter {
                     it.lastStatus() == "RUNNING"
-                }.map { it.taskArn() }
-            }
+                }.map { taskArnToVehicleIDMap[it.taskArn()]!! to it.taskArn() }
+            }.associate { it.first to it.second }
     }
 
     /**
@@ -185,27 +190,25 @@ class EcsTaskManager(
             } catch (ex: ClusterNotFoundException) {
                 throw EcsTaskManagerException("Cluster Not Found Exception for stopping taskID $it", ex)
             } catch (ex: InvalidParameterException) {
-                // Note if one taskID couldn't be found, it will raise this exception. We shall continue the rest
-                // of stopTask request as we want to clean up the tasks as much as we can
-                // In the end of function, we will throw exception if not all tasks are stopped
-                // TODO Logging as Warning
-                println("Invalid Parameter Exception for stopping taskID $it")
+                // This exception will be raise if one taskID couldn't be found. We should not wait for it
+                // to be stopped in the waiting stage next
+                log.warn("Invalid Parameter Exception for stopping taskID $it")
                 null
             }
         }
-        println("wait for all tasks to be stopped")
+        log.info("wait for all tasks to be stopped")
         // Maximum number of tasks per ecsClient waiter is 100.
         // Hence, we need to chunk the large task lists into smaller lists before requesting wait
         // Note although the waiters runs one by one, the loop latency should be small
         // as the stop task requests have been sent out previously.
         val stoppedTaskIDs = stoppingTaskIDs
             .chunked(MAX_TASK_PER_WAIT_TASK)
-            .flatMap {
+            .flatMap { chunkedTaskIDList ->
                 val waiterResponse = try {
                     ecsClient.waiter().waitUntilTasksStopped(
                         { builder ->
                             builder.cluster(ecsClusterName)
-                                .tasks(it)
+                                .tasks(chunkedTaskIDList)
                                 .build()
                         },
                         { builder ->
@@ -215,7 +218,7 @@ class EcsTaskManager(
                 } catch (ex: UnsupportedOperationException) {
                     throw EcsTaskManagerException("UnsupportedOperationException raised while waiting for all tasks stopping", ex)
                 } catch (ex: SdkClientException) {
-                    throw EcsTaskManagerException("SdkClientException raised while waiting for all tasks stopping", ex)
+                    throw EcsTaskManagerException("SdkClientException raised while waiting for tasks $chunkedTaskIDList stopping", ex)
                 }
                 // Check waiter response whether task last status is STOPPED
                 waiterResponse.matched().response().get().tasks().filter {
@@ -227,12 +230,8 @@ class EcsTaskManager(
                     it.taskArn().substringAfterLast('/')
                 }
             }
-        // Check whether we have tasks that fail to stop
-        val failToStopTaskIDs = taskIDList.filterNot { stoppedTaskIDs.contains(it) }
-        if (failToStopTaskIDs.isNotEmpty()) {
-            // throw exception with a list of fail to stop tasks
-            throw EcsTaskManagerException("Fail to stop task ID: $failToStopTaskIDs")
-        }
-        return stoppedTaskIDs
+        // Check whether we have stopping tasks that fail to end up as STOPPED
+        val failToStopTaskIDs = stoppingTaskIDs - stoppedTaskIDs.toSet()
+        return taskIDList - failToStopTaskIDs.toSet()
     }
 }

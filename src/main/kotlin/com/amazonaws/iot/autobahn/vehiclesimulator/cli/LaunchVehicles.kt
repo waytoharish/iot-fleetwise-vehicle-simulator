@@ -1,38 +1,130 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
+import com.amazonaws.iot.autobahn.vehiclesimulator.SimulatorCliInput
+import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator
+import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.ecs.EcsClient
+import software.amazon.awssdk.services.s3.S3AsyncClient
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.time.Duration
 import java.util.concurrent.Callable
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.relativeTo
+import kotlin.streams.toList
 
 @Command(
     name = "LaunchVehicles",
     description = ["Launch Virtual Vehicles and start simulation"],
 )
-class LaunchVehicles() : Callable<Int> {
 
-    @CommandLine.Option(required = true, names = ["--simulation-package-url", "-s"])
-    lateinit var simulationPackageUrl: String
+class LaunchVehicles(private val objectMapper: ObjectMapper = jacksonObjectMapper()) : Callable<Int> {
+    @CommandLine.Option(required = true, names = ["--simulation-input", "-s"])
+    lateinit var simulationInput: String
+
     @CommandLine.Option(required = true, names = ["--region", "-r"])
     lateinit var region: String
 
-    override fun call(): Int {
-        val ecsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build())
-        // TODO: Ingest simulation definition from input to generate map of vehicle ID to simulation package url.
-        // Below hard code map is temporarily in absence of module above
-        val simulationMapping = mapOf<String, String>(
-            "kfarm_v2_poc_car1" to "s3://fwe-simulator-poc/simulation/car1",
-            "kfarm_v2_poc_car2" to "s3://fwe-simulator-poc/simulation/car2",
-            "kfarm_v2_poc_car3" to "s3://fwe-simulator-poc/simulation/car3",
-            "kfarm_v2_poc_car4" to "s3://fwe-simulator-poc/simulation/car4",
-        )
-        val taskArnList = ecsTaskManager.runTasks(simulationMapping)
-        taskArnList.forEach {
-            println("Task created: $it")
+    @CommandLine.Option(required = true, names = ["--stage"])
+    lateinit var stage: String
+
+    @CommandLine.Option(required = false, arity = "0..*", names = ["--tag", "-t"])
+    var tags: List<String> = listOf()
+
+    @CommandLine.Option(required = false, names = ["--cpu-architecture", "-a"])
+    var cpuArchitecture: String = "arm64"
+
+    @CommandLine.Option(required = false, names = ["--recreate-iot-policy"])
+    var recreateIoTPolicyIfExists: Boolean = false
+
+    @CommandLine.Option(required = false, names = ["--ecs-task-definition"])
+    var ecsTaskDefinition: String = "fwe-$cpuArchitecture-with-cw"
+
+    // Timeout is in unit of minute
+    @CommandLine.Option(required = false, names = ["--ecs-waiter-timeout"])
+    var ecsWaiterTimeout: Int = 5
+
+    @CommandLine.Option(required = false, names = ["--ecs-waiter-retries"])
+    var ecsWaiterRetries: Int = 100
+
+    private val log: Logger = LoggerFactory.getLogger(LaunchVehicles::class.java)
+
+    private fun parseSimulationFile(simulationPackage: String): List<SimulatorCliInput> {
+        return objectMapper.readValue(File(simulationPackage).readText())
+    }
+
+    @OptIn(ExperimentalPathApi::class)
+    private suspend fun uploadLocalSimFiles(simConfigMaps: List<SimulatorCliInput>, s3Storage: S3Storage) {
+        simConfigMaps.filter { it.localPath.isNotEmpty() }.forEach { simConfig ->
+            Files.walk(Paths.get(simConfig.localPath))
+                .filter { Files.isRegularFile(it) }
+                .toList()
+                .map {
+                    val fileStream = File(it.toAbsolutePath().toString()).readBytes()
+                    s3Storage.put(simConfig.simulationMetaData.s3.bucket, "${simConfig.simulationMetaData.s3.key}/sim/${it.relativeTo(Paths.get(simConfig.localPath))}", fileStream)
+                }
         }
-        println("Vehicles launched with simulation package: $simulationPackageUrl")
-        return 0
+    }
+
+    private fun readConfigFile(simConfigMaps: List<SimulatorCliInput>): Map<String, String> {
+        return simConfigMaps.associate {
+            Pair(it.simulationMetaData.vehicleId, File(it.configPath).readText())
+        }
+    }
+
+    override fun call(): Int {
+        log.info("Simulation Map file $simulationInput and region $region and platform $cpuArchitecture")
+        val simConfigMaps = parseSimulationFile(simulationInput)
+        val edgeConfigFiles = readConfigFile(simConfigMaps)
+        val s3Storage = S3Storage(S3AsyncClient.builder().region(Region.of(region)).build())
+        log.info("Uploading simulation files to S3")
+        runBlocking(Dispatchers.IO) { uploadLocalSimFiles(simConfigMaps, s3Storage) }
+        val vehicleSimulator = VehicleSimulator(region, cpuArchitecture, s3Storage)
+        val thingCreationStatus = runBlocking(Dispatchers.IO) {
+            vehicleSimulator.preLaunch(
+                objectMapper,
+                simConfigMaps.map { it.simulationMetaData },
+                edgeConfigFiles,
+                stage,
+                recreateIoTPolicyIfExists = recreateIoTPolicyIfExists
+            )
+        }
+        log.info("Created Things: ${thingCreationStatus.successList}")
+        if (thingCreationStatus.failedList.isNotEmpty()) {
+            log.error("Failed to create things: ${thingCreationStatus.failedList}")
+            log.error("Cannot continue simulation as not all things are created successful")
+            return -1
+        }
+        val launchStatus = vehicleSimulator.launchVehicles(
+            simConfigMaps.map { it.simulationMetaData },
+            ecsTaskDefinition = ecsTaskDefinition,
+            tags = tags.filterIndexed { index, _ -> index % 2 == 0 }.zip(
+                tags.filterIndexed { index, _ -> index % 2 == 1 }
+            ).toMap(),
+            timeout = Duration.ofMinutes(ecsWaiterTimeout.toLong()),
+            retries = ecsWaiterRetries
+        )
+        log.info("launched vehicles: ${launchStatus.map { it.vehicleID }}")
+        log.info(
+            "ECS task IDs: ${launchStatus.map {
+                it.taskArn.substringAfterLast('/')
+            }.toString().replace(",", "")}"
+        )
+        log.info("Finish launching")
+        return if (simConfigMaps.map { it.simulationMetaData.vehicleId } == launchStatus.map { it.vehicleID }) {
+            0
+        } else {
+            -1
+        }
     }
 }

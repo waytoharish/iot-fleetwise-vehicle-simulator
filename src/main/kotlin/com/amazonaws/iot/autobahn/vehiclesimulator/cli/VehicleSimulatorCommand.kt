@@ -1,5 +1,7 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import java.util.concurrent.Callable
@@ -16,10 +18,9 @@ import kotlin.system.exitProcess
     ]
 )
 class VehicleSimulatorCommand : Callable<Int> {
-
+    private val log: Logger = LoggerFactory.getLogger(VehicleSimulatorCommand::class.java)
     override fun call(): Int {
-        // todo switch to logger
-        println("Please specify commands")
+        log.info("Please specify commands")
         return 1
     }
 

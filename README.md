@@ -1,54 +1,132 @@
 #Vehicle Simulator
+##Introduction
+Vehicle Simulator is a Kotlin package providing AWS IoT FleetWise Edge Agent and Vehicle
+simulation solution on AWS platform. 
 
-This package provides user an easy way to create a fleet of virtual vehicles. 
+This package can either be used as local command line application to launch simulation from terminal or
+imported as Kotlin library into other cloud application such as CI/CD, canary. 
 
+While the EC2 serve as the foundation of running virtual vehicle and edge agent, AWS ECS is used to make
+the simulation scalable and robust.
 The following diagram illustrates the vehicle launch process.
 
-<img src="./assets/vehicle-launch-process.png" />
+![high-level architecture](assets/vehicle-launch-process.png)
 
-#User Guide
-
-## On-boarding
-TODO: CDK / CloudFormation
-
-The following configuration will be setup during Onboarding:
-1. S3 Simulation Bucket
-2. ECS Cluster / Task definition
-3. EC2 ASG with launch template
-
-## Simulation Input
-User should provide a map file containing each vehicle ID and its simulation file location. Vehicle Simulator service will
-take this input and create IoT Things and upload to S3 simulation bucket.
-
-The S3 bucket should contain the following folder structure
+##Development
+###Setup
 ```
-Top Folder
-    |_ car1
-        |_ private key
-        |_ certificate
+brazil ws create --name vehicle-simulator
+cd vehicle-simulator
+brazil ws use \
+  --versionset IoTAutobahnVehicleSimulator/development \
+  --platform AL2_x86_64 \
+  --package IoTAutobahnVehicleSimulator
+cd src/IoTAutobahnVehicleSimulator
+brazil-build
+```
+
+##CLI User Guide
+## Pre-requisite
+### On-boarding
+For first time use, please run CDK to deploy AWS resources.
+The CDK instruction can be found in readme [IoTAutobahnVehicleSimulatorCDK](https://code.amazon.com/packages/IoTAutobahnVehicleSimulatorCDK/trees/mainline)
+
+### Refresh AWS credential
+Example
+```
+ada credentials update --account 763496144766 --role Admin --once
+```
+
+## Simulation Input Json 
+User can pass simulation input as json file. The simulation input allows user to define vehicle IDs, S3 bucket/keys,
+FleetWise edge config file local path, simulation scripts local path. Vehicles can have different S3 buckets as long
+as User ensure test account have write-access.
+to the S3 buckets at the region.
+
+Below is the example json 
+```
+[
+  {
+    "simulationMetaData": {
+      "vehicleID": "car0",
+      "s3": {
+        "bucket": "bucket0",
+        "key": "car0"
+      }
+    },
+    "edgeConfigFilename": "test/car0/config.json",
+    "simulationScriptPath": "car0/sim"
+  },
+  {
+    "simulationMetaData": {
+      "vehicleID": "car1",
+      "s3": {
+        "bucket": "bucket1",
+        "key": "car1"
+      }
+    },
+    "edgeConfigFilename": "test/car1/config.json",
+    "simulationScriptPath": "car1/sim"
+  }
+]
+```
+
+Vehicle Simulator will
+take this input and create IoT Things, compose config file and upload the whole package to the S3 bucket.
+The S3 bucket would contain the following folder structure after prelaunch.
+```
+S3
+    |_ vehicle folder
+        |_ pri.key
+        |_ cert.crt
         |_ config.json
         |_ sim
             |_ simulation scripts
 
 ```
-The Top folder url should be supplied to `LaunchVehicles` command
 
-## Pre-requisite
-Refresh AWS credential
-```
-ada credentials update --account 763496144766 --role Admin --once
-```
+## Create Vehicles 
 
-## Create Vehicles
-TODO define simulation mapping file format
+Use command `LaunchVehicles` with the following options. Highlight in bold are required options.
+* **--simulation-input, -s**: a json file to specify
+* **--region, -r**: specify aws region for resources such as S3 bucket, EC2, ECS
+* **--stage**: FleetWise test stage: alpha, beta, gamma, prod
+* --cpu-architecture, -arch: FleetWise Edge agent cpu architecture: arm64, amd64. Default is arm64
+* --tag, -t: tags user can customize to tag on ECS tasks
+* --recreate-iot-policy: flag to specify whether re-create or reuse IoT Policy if exists. Default is no
+* --ecs-task-definition: ECS task definition name
+* --ecs-waiter-timeout: ECS Timeout in unit of minutes before application gives up on waiting for all tasks running.
+* --ecs-waiter-retries: ECS retries before application gives up on waiting for all tasks running.
 
-Use option `LaunchVehicles` with `-s` followed by simulation mapping file and `-r` followed by region
+Example:
 ```
-brazil-runtime-exec vehicle-simulator LaunchVehicles -s simulation_file -r us-west-2
+brazil-runtime-exec vehicle-simulator LaunchVehicles \
+ -r us-west-2 \
+ -s simulation_input.json \
+ --tag user someone testID xyz \
+ -a arm64 \
+ --recreate-iot-policy \
+ --stage gamma \
+ --ecs-task-definition fwe-arm64-with-cw
 ```
 
 ## Stop Vehicles
-Use option `StopVehicles` and supply task ID following `-t` and `-r` followed by region. If there's multiple task IDs, use multiple `-t`
+Use command `StopVehicles` with the following options. Highlight in bold are required options.
+* **--region, -r**: specify aws region for resources such as S3 bucket, EC2, ECS
+* --ecsTaskID: ECS task IDs to be stopped. If not supplied to command, command will not stop ECS task
+* --simulation-input, -s: a json file to specify simulation input. If not supplied to command, command will not delete IoT Things and S3 bucket
+* --cpu-architecture, -a: FleetWise Edge agent cpu architecture: arm64, amd64. Default is arm64
+* --delete-iot-policy: flag to specify whether delete iot policy. Default is yes
+* --delete-iot-certificate: flag to specify whether delete iot cert. Default is yes
+* --ecs-waiter-timeout: ECS Timeout in unit of minutes before application gives up on waiting for all tasks stopped.
+* --ecs-waiter-retries: ECS retries before application gives up on waiting for all tasks stopped.
+
+Example:
 ```
-brazil-runtime-exec vehicle-simulator StopVehicles -t task1 -t task2 -t task3 -r us-west-2
+brazil-runtime-exec vehicle-simulator StopVehicles \
+ -r us-west-2 \
+ --ecsTaskID task1 task2 \
+ -s simulation_input.json \
+ --delete-iot-policy \
+ --delete-iot-certificate
 ```

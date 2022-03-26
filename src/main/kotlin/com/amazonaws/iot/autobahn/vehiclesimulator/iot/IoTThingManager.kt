@@ -1,5 +1,6 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.iot
 
+import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
 import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.CertificateDeletionException
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import com.github.michaelbull.retry.policy.decorrelatedJitterBackoff
@@ -11,6 +12,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.future.asDeferred
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.services.iot.IotAsyncClient
@@ -26,11 +28,12 @@ import java.time.Duration
 class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Storage: S3Storage) {
     private val log = LoggerFactory.getLogger(IoTThingManager::class.java)
     private suspend fun createKeysAndCertificate(): CreateKeysAndCertificateResponse {
+        log.info("Creating certificate")
         // create private / public keys and cert
         val cert =
             iotClient.createKeysAndCertificate { builder ->
                 builder.setAsActive(true)
-            }.asDeferred().await()
+            }.await()
         return cert
     }
 
@@ -42,61 +45,71 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
     ) {
         // create policy
         try {
+            log.info("Creating Policy $policyName")
             iotClient.createPolicy { builder ->
                 builder.policyName(policyName).policyDocument(policyDocument)
-            }.asDeferred().await()
+            }.await()
         } catch (ex: ResourceAlreadyExistsException) {
             if (recreatePolicyIfAlreadyExists) {
                 log.info("Policy already exists, delete and create")
                 deletePolicy(policyName)
                 iotClient.createPolicy { builder ->
                     builder.policyName(policyName).policyDocument(policyDocument)
-                }.asDeferred().await()
+                }.await()
             } else {
                 log.info("Policy already exists, reuse")
             }
         }
+        log.info("Attaching policy $policyName to Cert $certArn")
         iotClient.attachPolicy { builder ->
             builder.policyName(policyName)
                 .target(certArn)
-        }.asDeferred().await()
+        }.await()
     }
 
     private suspend fun createThingAndAttachCert(thingName: String, certArn: String) {
         try {
+            log.info("Creating Thing $thingName")
+            // If this call is made multiple times using the same thing name and configuration, the call will succeed.
+            // If this call is made with the same thing name but different configuration a ResourceAlreadyExistsException is thrown.
             iotClient.createThing { builder ->
                 builder.thingName(thingName)
-            }.asDeferred().await()
+            }.await()
         } catch (ex: ResourceAlreadyExistsException) {
-            log.info("IoT Thing $thingName already exists, delete and re-create a new one")
+            log.info("Attempting to create existing Thing $thingName with different config, delete and re-create Thing")
             if (deleteThing(thingName) != null) {
                 iotClient.createThing { builder ->
                     builder.thingName(thingName)
-                }.asDeferred().await()
+                }.await()
             } else {
                 // if deleteThing returns null, the deletion failed
                 // We will reuse the thing instead of creating a new one
                 log.error("Attempted to re-create thing $thingName but failed to delete it, reuse")
             }
         }
+        log.info("Attaching cert $certArn to Thing $thingName")
         iotClient.attachThingPrincipal { builder ->
             builder.thingName(thingName)
                 .principal(certArn)
-        }.asDeferred().await()
+        }.await()
     }
 
     // If policy no longer exit, this function will throw ResourceNotFoundException
     private suspend fun deletePolicy(policyName: String) = coroutineScope {
         // To delete policy, we need to detach it from the targets (certificate)
-        iotClient.listTargetsForPolicy { builder ->
-            builder.policyName(policyName).build()
-        }.asDeferred().await().targets().map {
-            async {
+        var nextMarker: String? = null
+        do {
+            val response = iotClient.listTargetsForPolicy { builder ->
+                builder.policyName(policyName).build()
+            }.await()
+            response.targets().map {
+                log.info("Detaching cert $it")
                 iotClient.detachPolicy { builder ->
                     builder.policyName(policyName).target(it).build()
-                }
-            }
-        }.awaitAll()
+                }.asDeferred()
+            }.awaitAll()
+            nextMarker = response.nextMarker()
+        } while (nextMarker != null)
         // Because of the distributed nature of Amazon Web Services, it can take up to
         // five minutes after a policy is detached before it's ready to be deleted.
         // We need retry if this happened
@@ -108,10 +121,10 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                     max = Duration.ofMinutes(1).toMillis()
                 )
         ) {
-            log.info("deleting policy $policyName")
+            log.info("Deleting policy $policyName")
             iotClient.deletePolicy { builder ->
                 builder.policyName(policyName)
-            }.asDeferred().await()
+            }.await()
         }
     }
 
@@ -119,9 +132,10 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
         principalSet.forEach {
             launch {
                 val certId = it.substringAfterLast("/")
+                log.info("De-activating cert $certId")
                 iotClient.updateCertificate { builder ->
                     builder.certificateId(certId).newStatus("INACTIVE").build()
-                }.asDeferred().await()
+                }.await()
                 // The detachThingPrincipal is async call and might take few seconds to propagate.
                 // So it might happen that cert is not ready to delete. If this happens, retry in a few moment
                 // if it still failed to delete, we should log it as error but continue deleting the rest of things
@@ -134,13 +148,13 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                                 max = Duration.ofSeconds(30).toMillis()
                             )
                     ) {
-                        log.info("deleting cert $certId")
+                        log.info("Deleting cert $certId")
                         iotClient.deleteCertificate { builder ->
                             builder.certificateId(certId).forceDelete(true).build()
-                        }.asDeferred().await()
+                        }.await()
                     }
                 } catch (ex: DeleteConflictException) {
-                    throw CertificateDeletionException("Fail to delete Cert $certId due to DeleteConflictException, ${ex.message}")
+                    throw CertificateDeletionException("Failed to delete Cert $certId due to DeleteConflictException, ${ex.message}")
                 }
             }
         }
@@ -148,22 +162,28 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
 
     private suspend fun deleteThing(thingName: String): List<String>? = coroutineScope {
         // First we query a list of thing principals for this Thing.
-        val principalList = try {
-            iotClient.listThingPrincipals { builder ->
-                builder.thingName(thingName).build()
-            }.asDeferred().await().principals()
-        } catch (ex: ResourceNotFoundException) {
-            // If exception raised due to Thing no longer exist, we shall continue the deletion
-            log.warn("listThingPrincipals raised exception: ${ex.awsErrorDetails().errorMessage()}")
-            listOf<String>()
-        }
-        principalList.map {
-            async {
-                // Before thing is ready to delete, it needs to be detached from principal
-                iotClient.detachThingPrincipal { builder ->
-                    builder.thingName(thingName).principal(it).build()
-                }.asDeferred()
+        var principalList = mutableListOf<String>()
+        var nextToken: String? = null
+        do {
+            try {
+                val response = iotClient.listThingPrincipals { builder ->
+                    builder.thingName(thingName).nextToken(nextToken).build()
+                }.await()
+                principalList.addAll(response.principals())
+                nextToken = response.nextToken()
+            } catch (ex: ResourceNotFoundException) {
+                // If exception raised due to Thing no longer exist, we catch the exception and continue deleting other things
+                log.warn("Thing $thingName does not exist: ${ex.awsErrorDetails().errorMessage()}")
+                // Set the nextToken as null to exit the loop
+                nextToken = null
             }
+        } while (nextToken != null)
+        principalList.map {
+            log.info("Detaching cert $it from Thing $thingName")
+            // Before thing is ready to delete, it needs to be detached from principal
+            iotClient.detachThingPrincipal { builder ->
+                builder.thingName(thingName).principal(it).build()
+            }.asDeferred()
         }.awaitAll()
         // Based on API doc, if thing doesn't exist, deleteThing still returns true
         // The previous call of detachThingPrincipal might take several seconds to propagate. Hence retry
@@ -176,11 +196,13 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                         max = Duration.ofSeconds(30).toMillis()
                     )
             ) {
+                log.info("Deleting Thing $thingName")
                 iotClient.deleteThing { builder ->
                     builder.thingName(thingName)
-                }.asDeferred().await()
+                }.await()
             }
         } catch (ex: InvalidRequestException) {
+            log.error("Failed to delete Thing $thingName after retries")
             return@coroutineScope null
         }
         return@coroutineScope principalList
@@ -198,7 +220,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
      * @return a list of created Things and a list of failed to create things
      */
     suspend fun createAndStoreThings(
-        simConfigMap: Map<String, S3Storage.Companion.BucketAndKey>,
+        simConfigMap: List<SimulationMetaData>, // Map<String, S3Storage.Companion.BucketAndKey>,
         policyName: String = DEFAULT_POLICY_NAME,
         policyDocument: String = DEFAULT_POLICY_DOCUMENT,
         recreatePolicyIfAlreadyExists: Boolean = false
@@ -206,25 +228,24 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
         val cert = createKeysAndCertificate()
         log.info("Certificate ${cert.certificateId()} created")
         createPolicyAndAttachToCert(policyName, policyDocument, cert.certificateArn(), recreatePolicyIfAlreadyExists)
-        log.info("Policy $policyName created")
         val createdThings =
-            simConfigMap.entries.chunked(CREATE_DELETE_THINGS_BATCH_SIZE).flatMap {
+            simConfigMap.chunked(CREATE_DELETE_THINGS_BATCH_SIZE).flatMap {
                 // Create Things with batch size set as CREATE_DELETE_THINGS_BATCH_SIZE
                 it.map {
                     async {
                         // We might run into throttling from IoT Core, hence use retry if throttle
                         retry(retryPolicyForThrottlingOrServiceUnavailable) {
-                            createThingAndAttachCert(it.key, cert.certificateArn())
+                            createThingAndAttachCert(it.vehicleId, cert.certificateArn())
                         }
                         // The thing is created, store cert and private key onto S3
-                        s3Storage.put(it.value.bucket, "${it.value.key}/cert.crt", cert.certificatePem().toByteArray())
-                        s3Storage.put(it.value.bucket, "${it.value.key}/pri.key", cert.keyPair().privateKey().toByteArray())
-                        log.info("Creating Thing ${it.value}. Cert and Private Key will be stored at ${it.value}")
-                        it.key
+                        s3Storage.put(it.s3.bucket, "${it.s3.key}/cert.crt", cert.certificatePem().toByteArray())
+                        s3Storage.put(it.s3.bucket, "${it.s3.key}/pri.key", cert.keyPair().privateKey().toByteArray())
+                        log.info("Cert and Private Key will be stored at s3 bucket ${it.s3.bucket} key: ${it.s3.key}")
+                        it.vehicleId
                     }
                 }.awaitAll()
             }
-        return@coroutineScope ThingOperationStatus(createdThings.toSet(), simConfigMap.keys - createdThings.toSet())
+        return@coroutineScope ThingOperationStatus(createdThings.toSet(), simConfigMap.map { it.vehicleId }.toSet() - createdThings.toSet())
     }
 
     /**
@@ -239,33 +260,33 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
      * @throws CertificateDeletionException if certificate deletion failed
      */
     suspend fun deleteThings(
-        simConfigMap: Map<String, S3Storage.Companion.BucketAndKey>,
+        simConfigMap: List<SimulationMetaData>, // Map<String, S3Storage.Companion.BucketAndKey>,
         policyName: String = DEFAULT_POLICY_NAME,
-        deletePolicy: Boolean = false
+        deletePolicy: Boolean = false,
+        deleteCert: Boolean = false,
     ): ThingOperationStatus = coroutineScope {
         val deleteThingResponse =
-            simConfigMap.entries.chunked(CREATE_DELETE_THINGS_BATCH_SIZE).flatMap { chunkedMap ->
+            simConfigMap.chunked(CREATE_DELETE_THINGS_BATCH_SIZE).flatMap { chunkedList ->
                 // Delete Things with batch size set as CREATE_DELETE_THINGS_BATCH_SIZE
-                chunkedMap.map {
+                chunkedList.map {
                     async {
                         // We might run into throttling from IoT Core, hence use retry if throttle
                         retry(retryPolicyForThrottlingOrServiceUnavailable) {
-                            val principalList = deleteThing(it.key)
-                            log.info("deleting thing ${it.key}")
+                            val principalList = deleteThing(it.vehicleId)
                             if (principalList == null) {
                                 null
                             } else {
-                                Pair(it.key, principalList)
+                                Pair(it.vehicleId, principalList)
                             }
                         }
                     }
                 }.awaitAll().filterNotNull()
             }.toMap()
         // To delete certs and keys, we first group by bucket and perform batch deletion per bucket
-        simConfigMap.values.groupBy { it.bucket }.mapValues {
+        simConfigMap.groupBy { it.s3.bucket }.mapValues {
             it ->
             it.value.flatMap {
-                listOf("${it.key}/$CERTIFICATE_FILE_NAME", "${it.key}/$PRIVATE_KEY_FILE_NAME")
+                listOf("${it.vehicleId}/$CERTIFICATE_FILE_NAME", "${it.vehicleId}/$PRIVATE_KEY_FILE_NAME")
             }
         }.forEach {
             s3Storage.deleteObjects(it.key, it.value)
@@ -277,12 +298,14 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
             } catch (ex: ResourceNotFoundException) {
                 // This raise exception could be thrown if the Policy no longer exist.
                 // We should log it as Error but should not re-throw the exception as we cannot delete a non-existed policy
-                log.error("Policy $policyName not found during deletion attempt")
+                log.error("Policy \"$policyName\" not found during deletion attempt")
             }
         }
-        deleteCerts(deleteThingResponse.values.flatten().toSet())
-        val deletedThings = deleteThingResponse.keys.toList()
-        return@coroutineScope ThingOperationStatus(deletedThings.toSet(), simConfigMap.keys - deletedThings.toSet())
+        if (deleteCert) {
+            deleteCerts(deleteThingResponse.values.flatten().toSet())
+        }
+        val deletedThings = deleteThingResponse.keys
+        return@coroutineScope ThingOperationStatus(deletedThings, simConfigMap.map { it.vehicleId }.toSet() - deletedThings.toSet())
     }
 
     /**
@@ -293,7 +316,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
     suspend fun getIoTCoreDataEndPoint(): String {
         return iotClient.describeEndpoint { builder ->
             builder.endpointType("iot:Data-ATS")
-        }.asDeferred().await().endpointAddress()
+        }.await().endpointAddress()
     }
 
     companion object {

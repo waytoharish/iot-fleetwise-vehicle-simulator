@@ -1,5 +1,7 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.iot
 
+import com.amazonaws.iot.autobahn.vehiclesimulator.S3
+import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
 import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.CertificateDeletionException
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.CERTIFICATE_FILE_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
@@ -10,6 +12,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
+import io.mockk.unmockkConstructor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runBlockingTest
@@ -62,11 +65,12 @@ internal class IoTThingManagerTest {
 
     private val carList = setOf("car0", "car1", "car2", "car3")
 
-    private val simulationMapping = listOf("car0", "car1").associateWith {
-        S3Storage.Companion.BucketAndKey("test_bucket_a", it)
-    } + listOf("car2", "car3").associateWith {
-        S3Storage.Companion.BucketAndKey("test_bucket_b", it)
-    }
+    private val simulationMapping = listOf("car0", "car1").map {
+        SimulationMetaData(it, S3("test_bucket_a", it))
+    } +
+        listOf("car2", "car3").map {
+            SimulationMetaData(it, S3("test_bucket_b", it))
+        }
 
     private val createThingRequestSlot = mutableListOf<Consumer<CreateThingRequest.Builder>>()
     private val createPolicyRequestSlot = mutableListOf<Consumer<CreatePolicyRequest.Builder>>()
@@ -85,7 +89,6 @@ internal class IoTThingManagerTest {
 
     @BeforeEach
     fun setup() {
-        println("start setting up")
         // Mock for S3 Storage
         coEvery {
             s3Storage.put(any(), any(), any())
@@ -340,7 +343,7 @@ internal class IoTThingManagerTest {
 
     @Test
     fun `When deleteThings called with IoT Thing, cert and key deleted`() {
-        val result = runBlocking { iotThingManager.deleteThings(simulationMapping, deletePolicy = true) }
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping, deletePolicy = true, deleteCert = true) }
         Assertions.assertTrue(carList == result.successList)
         Assertions.assertEquals(0, result.failedList.size)
         Assertions.assertTrue(
@@ -414,6 +417,22 @@ internal class IoTThingManagerTest {
     }
 
     @Test
+    fun `When deleteThings called with IoT Thing attached with long list of certificates`() {
+        // Here we mock listThingPrincipals returns multiple page of principals
+        every {
+            ioTClient.listThingPrincipals(capture(listThingPrincipalRequestSlot))
+        } returns CompletableFuture.completedFuture(
+            ListThingPrincipalsResponse.builder().principals(listOf("principal")).nextToken("nextToken").build()
+        ) andThen
+            CompletableFuture.completedFuture(
+                ListThingPrincipalsResponse.builder().principals(listOf("principal")).nextToken(null).build()
+            )
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        Assertions.assertEquals(carList, result.successList)
+        Assertions.assertEquals(0, result.failedList.size)
+    }
+
+    @Test
     fun `When deleteThings called with IoT Thing Not Found`() {
         // Mock ResourceNotFoundException as the code will log exception error message
         mockkConstructor(ResourceNotFoundException::class)
@@ -424,6 +443,7 @@ internal class IoTThingManagerTest {
         val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
+        unmockkConstructor(ResourceNotFoundException::class)
     }
 
     @Test
@@ -434,6 +454,21 @@ internal class IoTThingManagerTest {
         } throws InvalidRequestException.builder().build() andThen
             CompletableFuture.completedFuture(DeleteThingResponse.builder().build())
         val result = runBlocking { iotThingManager.deleteThings(simulationMapping) }
+        Assertions.assertEquals(carList, result.successList)
+        Assertions.assertEquals(0, result.failedList.size)
+    }
+
+    @Test
+    fun `When deleteThings called with IoT Policy has multiple page of certs attached`() {
+        every {
+            ioTClient.listTargetsForPolicy(capture(listTargetsForPolicyRequest))
+        } returns CompletableFuture.completedFuture(
+            ListTargetsForPolicyResponse.builder().targets(listOf("cert")).nextMarker("nextMarker").build()
+        ) andThen
+            CompletableFuture.completedFuture(
+                ListTargetsForPolicyResponse.builder().targets(listOf("cert")).build()
+            )
+        val result = runBlocking { iotThingManager.deleteThings(simulationMapping, deletePolicy = true) }
         Assertions.assertEquals(carList, result.successList)
         Assertions.assertEquals(0, result.failedList.size)
     }
@@ -467,7 +502,7 @@ internal class IoTThingManagerTest {
         } throws DeleteConflictException.builder().build()
         assertThrows<CertificateDeletionException> {
             runBlockingTest {
-                iotThingManager.deleteThings(simulationMapping, deletePolicy = true)
+                iotThingManager.deleteThings(simulationMapping, deletePolicy = true, deleteCert = true)
             }
         }
     }

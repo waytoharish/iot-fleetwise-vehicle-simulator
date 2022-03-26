@@ -2,6 +2,7 @@ package com.amazonaws.iot.autobahn.vehiclesimulator.storage
 
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.future.asDeferred
+import kotlinx.coroutines.future.await
 import software.amazon.awssdk.core.async.AsyncRequestBody
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier
@@ -29,6 +30,12 @@ class S3Storage(private var client: S3AsyncClient) {
                     }
                 }.asDeferred()
             }.awaitAll()
+    }
+
+    suspend fun listObjects(bucket: String, key: String): List<String> {
+        return client.listObjectsV2 { builder ->
+            builder.bucket(bucket).prefix(key)
+        }.await().contents().map { it.key() }
     }
 
     companion object {
