@@ -57,7 +57,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                     builder.policyName(policyName).policyDocument(policyDocument)
                 }.await()
             } else {
-                log.info("Policy already exists, reuse")
+                log.info("Policy already exists, reusing the same policy")
             }
         }
         log.info("Attaching policy $policyName to Cert $certArn")

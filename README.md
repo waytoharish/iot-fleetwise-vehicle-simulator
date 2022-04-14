@@ -28,8 +28,18 @@ brazil-build
 ##CLI User Guide
 ## Pre-requisite
 ### On-boarding
+#### CDK to deploy AWS resources
 For first time use, please run CDK to deploy AWS resources.
 The CDK instruction can be found in readme [IoTAutobahnVehicleSimulatorCDK](https://code.amazon.com/packages/IoTAutobahnVehicleSimulatorCDK/trees/mainline)
+#### Pull Edge Docker Image from AWS ECR
+To use the default Edge docker image, the AWS account needs to have access to the two ECRs hosted on account 
+iot-autobahn+embedded-code@amazon.com 763496144766 : 
+[vehicle-simulator-arm64](https://tiny.amazon.com/vdhs5utm/IsenLink) and [vehicle-simulator-amd64](https://tiny.amazon.com/ly1sl76q/IsenLink).
+
+There are two ways of getting access to ECR. The first approach is the quickest.
+* Add your account under internal developer service principal: 
+[developer.iot-autobahn.aws.internal](https://naps.amazon.com/service_principals/148728)
+* Log into each ECR through Isengard, go to Permissions. Click on Edit to add your AWS account.
 
 ### Refresh AWS credential
 Example

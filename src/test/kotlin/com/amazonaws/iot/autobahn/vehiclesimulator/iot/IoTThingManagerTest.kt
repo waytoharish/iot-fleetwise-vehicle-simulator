@@ -417,7 +417,7 @@ internal class IoTThingManagerTest {
     }
 
     @Test
-    fun `When deleteThings called with IoT Thing attached with long list of certificates`() {
+    fun `When deleteThings called with listThingPrincipals returns multiple pages of certificates`() {
         // Here we mock listThingPrincipals returns multiple page of principals
         every {
             ioTClient.listThingPrincipals(capture(listThingPrincipalRequestSlot))
@@ -459,7 +459,7 @@ internal class IoTThingManagerTest {
     }
 
     @Test
-    fun `When deleteThings called with IoT Policy has multiple page of certs attached`() {
+    fun `When deleteThings called with listTargetsForPolicy returns multiple pages of certificates`() {
         every {
             ioTClient.listTargetsForPolicy(capture(listTargetsForPolicyRequest))
         } returns CompletableFuture.completedFuture(

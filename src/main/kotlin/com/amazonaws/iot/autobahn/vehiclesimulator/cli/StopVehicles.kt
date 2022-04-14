@@ -78,7 +78,7 @@ class StopVehicles(private val objectMapper: ObjectMapper = jacksonObjectMapper(
                     deleteIoTCert = deleteIoTCert
                 )
             }
-            log.info("Successfully delete things: ${thingDeletionStatus.successList}")
+            log.info("Successfully deleted things: ${thingDeletionStatus.successList}")
             if (thingDeletionStatus.failedList.isNotEmpty()) {
                 log.error("Failed to delete things: ${thingDeletionStatus.failedList}")
                 result = -1

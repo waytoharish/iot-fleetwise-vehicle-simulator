@@ -114,13 +114,13 @@ class LaunchVehicles(private val objectMapper: ObjectMapper = jacksonObjectMappe
             timeout = Duration.ofMinutes(ecsWaiterTimeout.toLong()),
             retries = ecsWaiterRetries
         )
-        log.info("launched vehicles: ${launchStatus.map { it.vehicleID }}")
+        log.info("Launched vehicles: ${launchStatus.map { it.vehicleID }}")
         log.info(
             "ECS task IDs: ${launchStatus.map {
                 it.taskArn.substringAfterLast('/')
             }.toString().replace(",", "")}"
         )
-        log.info("Finish launching")
+        log.info("Finished launching")
         return if (simConfigMaps.map { it.simulationMetaData.vehicleId } == launchStatus.map { it.vehicleID }) {
             0
         } else {

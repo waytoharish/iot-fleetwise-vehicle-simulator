@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.iot.IotAsyncClient
+import software.amazon.awssdk.services.s3.S3AsyncClient
 import java.time.Duration
 
 /**
@@ -28,7 +29,7 @@ import java.time.Duration
 class VehicleSimulator(
     private val region: String,
     private val arch: String,
-    private val s3Storage: S3Storage,
+    private val s3Storage: S3Storage = S3Storage(S3AsyncClient.builder().region(Region.of(region)).build()),
     private val ioTThingManager: IoTThingManager = IoTThingManager(IotAsyncClient.builder().region(Region.of(region)).build(), s3Storage),
     private val ecsTaskManager: EcsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build(), arch)
 ) {
