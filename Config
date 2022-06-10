@@ -39,6 +39,7 @@ package.IoTAutobahnVehicleSimulator = {
 
     runtime-dependencies = {
         1.0 = {
+            JDK11 = 1.0;
             Log4j-slf4j = 2.x;
             log4j = 2.14.1;
         };
