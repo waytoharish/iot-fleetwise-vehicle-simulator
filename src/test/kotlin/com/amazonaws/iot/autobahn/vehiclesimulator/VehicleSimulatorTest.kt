@@ -24,7 +24,7 @@ class VehicleSimulatorTest {
     private val s3Storage = mockk<S3Storage>()
     private val ioTThingManager = mockk<IoTThingManager>()
     private val ecsTaskManager = mockk<EcsTaskManager>()
-    private val vehicleSimulator = VehicleSimulator("region", "cpu", s3Storage, ioTThingManager, ecsTaskManager)
+    private val vehicleSimulator = VehicleSimulator("us-east-1", "cpu", s3Storage, ioTThingManager, ecsTaskManager)
 
     private val simInput = listOf("car0", "car1").map {
         SimulationMetaData(it, S3("test-bucket", it))
