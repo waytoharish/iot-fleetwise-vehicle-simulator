@@ -3,9 +3,9 @@ package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 import com.amazonaws.iot.autobahn.vehiclesimulator.S3
 import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
 import com.amazonaws.iot.autobahn.vehiclesimulator.SimulatorCliInput
+import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSetupStatus
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator.Companion.LaunchStatus
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_DOCUMENT
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
@@ -73,7 +73,7 @@ internal class LaunchVehiclesTest {
                 any(),
                 any()
             )
-        } returns IoTThingManager.Companion.ThingOperationStatus(carList.toSet(), setOf())
+        } returns VehicleSetupStatus(carList.toSet(), setOf())
         every {
             anyConstructed<VehicleSimulator>().launchVehicles(any(), any(), any(), any(), any(), any())
         } returns carList.map { LaunchStatus(it, "task") }
@@ -116,7 +116,7 @@ internal class LaunchVehiclesTest {
                 any(),
                 any()
             )
-        } returns IoTThingManager.Companion.ThingOperationStatus(setOf("car0"), setOf("car1"))
+        } returns VehicleSetupStatus(setOf("car0"), setOf("car1"))
         every {
             anyConstructed<VehicleSimulator>().launchVehicles(any(), any(), any(), any(), any(), any())
         } returns carList.map { LaunchStatus(it, "task") }
@@ -136,7 +136,7 @@ internal class LaunchVehiclesTest {
                 any(),
                 any()
             )
-        } returns IoTThingManager.Companion.ThingOperationStatus(carList.toSet(), setOf())
+        } returns VehicleSetupStatus(carList.toSet(), setOf())
         every {
             anyConstructed<VehicleSimulator>().launchVehicles(any(), any(), any(), any(), any(), any())
         } returns listOf(LaunchStatus("car1", "task1"))

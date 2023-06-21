@@ -81,6 +81,37 @@ Below is the example json
 ]
 ```
 
+In some cases, you may not wish to provision a new thing for every vehicle or associate them with device certificates
+created in IoT Core. For example, the certificate is issued via private CA (eg. ACM PCA), and you wish to provision via 
+[JITR (Just-In-Time Registration)](https://aws.amazon.com/blogs/iot/just-in-time-registration-of-device-certificates-on-aws-iot/).
+
+In this case, you can set ```provisionThing``` to false and provide device certificate config.
+Device certificate config consists of a CA ARN set up in ACM PCA and other certificate parameters used to create a device certificate
+signed by the private CA created in ACM.
+
+```
+[
+  {
+    "simulationMetaData": {
+      "vehicleID": "car1",
+      "s3": {
+        "bucket": "bucket1",
+        "key": "car1"
+      },
+      "provisionThing": false,
+      "deviceCertificateConfig": {
+        "caArn": "arn:aws:acm-pca:eu-central-1:670453324271:certificate-authority/6d13e80b-43af-48f2-8052-61f85ab7f9d4,
+        "commonName": "car1",
+        "organization": "Amazon",
+        "countryCode": "US"
+      }
+    },
+    "edgeConfigFilename": "test/car1/config.json",
+    "simulationScriptPath": "car1/sim"
+  }
+]
+```
+
 Vehicle Simulator will
 take this input and create IoT Things, compose config file and upload the whole package to the S3 bucket.
 The S3 bucket would contain the following folder structure after prelaunch.

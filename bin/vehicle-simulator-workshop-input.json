@@ -1,0 +1,40 @@
+[
+    {
+        "simulationMetaData": {
+            "vehicleID": "ramnanib_pca_car_1",
+            "s3": {
+                "bucket": "vehicle-simulator-arm64-simulationbucketc119e589-f3z19g7b4m0b",
+                "key": "vehicle-simulator-workshop/ramnanib_pca_car_1"
+            },
+            "provisionThing": false,
+            "deviceCertificateConfig": {
+                "pcaArn": "arn:aws:acm-pca:eu-central-1:550173324271:certificate-authority/a1effb5f-dca3-42c4-8de3-28e08f1cee32",
+                "commonName": "ramnanib_pca_car_1",
+                "organization": "AWS",
+                "countryCode": "US",
+                "validityDays": 120
+            }
+        },
+        "edgeConfigFilename": "REPLACE_WITH_ABSOLUTE_CONFIG_PATH",
+        "simulationScriptPath": "REPLACE_WITH_ABSOLUTE_SIM_FOLDER_PATH"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "ramnanib_pca_car_2",
+            "s3": {
+                "bucket": "vehicle-simulator-arm64-simulationbucketc119e589-f3z19g7b4m0b",
+                "key": "vehicle-simulator-workshop/ramnanib_pca_car_2"
+            },
+            "provisionThing": false,
+            "deviceCertificateConfig": {
+                "pcaArn": "arn:aws:acm-pca:eu-central-1:550173324271:certificate-authority/a1effb5f-dca3-42c4-8de3-28e08f1cee32",
+                "commonName": "ramnanib_pca_car_2",
+                "organization": "AWS",
+                "countryCode": "US",
+                "validityDays": 120
+            }
+        },
+        "edgeConfigFilename": "REPLACE_WITH_ABSOLUTE_CONFIG_PATH",
+        "simulationScriptPath": "REPLACE_WITH_ABSOLUTE_SIM_FOLDER_PATH"
+    }
+]

@@ -29,7 +29,10 @@ package.IoTAutobahnVehicleSimulator = {
             AwsJavaSdk-Ecs = 2.0;
             AwsJavaSdk-S3 = 2.0;
             AwsJavaSdk-Iot = 2.0;
+            AwsJavaSdk-AcmPca = 2.0;
+            AwsJavaSdk-Acm = 2.0;
             Maven-com-michael-bull-kotlin-retry_kotlin-retry = 1.x;
+            BouncyCastleCrypto = 1.x;
 
             Slf4j = 1.7;
             log4j = 2.x;

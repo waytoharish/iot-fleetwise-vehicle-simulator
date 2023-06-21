@@ -1,17 +1,18 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator
 
 import com.amazonaws.iot.autobahn.config.ControlPlaneResources
+import com.amazonaws.iot.autobahn.vehiclesimulator.cert.ACMCertificateManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig.EdgeConfigProcessor
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_DOCUMENT
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.ThingOperationStatus
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.acmpca.AcmPcaAsyncClient
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.iot.IotAsyncClient
 import software.amazon.awssdk.services.s3.S3AsyncClient
@@ -24,6 +25,7 @@ import java.time.Duration
  * @param arch CPU architecture for FleetWise Edge: arm64, amd64
  * @param s3Storage S3 bucket client
  * @param ioTThingManager module that handle IoT Thing lifecycle
+ * @param acmCertificateManager module that provides functions to create and delete certificates against a private CA in AWS Certificate Manager
  * @param ecsTaskManager module that handle ECS Task lifecycle
  */
 class VehicleSimulator(
@@ -31,6 +33,7 @@ class VehicleSimulator(
     private val arch: String,
     private val s3Storage: S3Storage = S3Storage(S3AsyncClient.builder().region(Region.of(region)).build()),
     private val ioTThingManager: IoTThingManager = IoTThingManager(IotAsyncClient.builder().region(Region.of(region)).build(), s3Storage),
+    private val acmCertificateManager: ACMCertificateManager = ACMCertificateManager(AcmPcaAsyncClient.builder().region(Region.of(region)).build(), s3Storage),
     private val ecsTaskManager: EcsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build(), arch)
 ) {
     private val log: Logger = LoggerFactory.getLogger(VehicleSimulator::class.java)
@@ -58,13 +61,35 @@ class VehicleSimulator(
         policyName: String = DEFAULT_POLICY_NAME,
         policyDocument: String = DEFAULT_POLICY_DOCUMENT,
         recreateIoTPolicyIfExists: Boolean
-    ): ThingOperationStatus {
-        log.info("Creating IoT things")
-        val thingCreationStatus = ioTThingManager.createAndStoreThings(
-            simulationMetaDataList,
-            policyName = policyName,
-            policyDocument = policyDocument,
-            recreatePolicyIfAlreadyExists = recreateIoTPolicyIfExists
+    ): VehicleSetupStatus {
+        // Get simulation input for provisioning
+        val vehiclesToProvision = simulationMetaDataList.filter {
+            it.provisionThing
+        }
+
+        val vehiclesWithPrivateCert = simulationMetaDataList.filter {
+            !it.provisionThing
+        }
+        var thingCreationStatus = VehicleSetupStatus(emptySet(), emptySet())
+        var privateCertCreationStatus = VehicleSetupStatus(emptySet(), emptySet())
+
+        if (vehiclesToProvision.isNotEmpty()) {
+            log.info("Creating IoT things for vehicles: ${vehiclesToProvision.size}")
+            thingCreationStatus = ioTThingManager.createAndStoreThings(
+                vehiclesToProvision,
+                policyName = policyName,
+                policyDocument = policyDocument,
+                recreatePolicyIfAlreadyExists = recreateIoTPolicyIfExists,
+            )
+        }
+
+        if (vehiclesWithPrivateCert.isNotEmpty()) {
+            log.info("Creating and uploading private keys and certs for vehicles: ${vehiclesWithPrivateCert.size}")
+            privateCertCreationStatus = acmCertificateManager.setupVehiclesWithCertAndPrivateKey(vehiclesWithPrivateCert)
+        }
+        val vehicleSetupStatus = VehicleSetupStatus(
+            thingCreationStatus.successList + privateCertCreationStatus.successList,
+            thingCreationStatus.failedList + privateCertCreationStatus.failedList
         )
         val config = EdgeConfigProcessor(ControlPlaneResources(region, stage), objectMapper)
         // Compose the new config with MQTT parameters based on FleetWise Test Stage and IoT Core data end point
@@ -74,10 +99,10 @@ class VehicleSimulator(
         simulationMetaDataList.forEach {
             newConfigMap[it.vehicleId]?.let {
                 config ->
-                s3Storage.put(it.s3.bucket, "${it.s3.key}/config.json", config.toByteArray())
+                s3Storage.put(it.s3.bucket, "${it.s3.key}/$CONFIG_FILE_NAME", config.toByteArray())
             }
         }
-        return thingCreationStatus
+        return vehicleSetupStatus
     }
 
     /**
@@ -151,7 +176,7 @@ class VehicleSimulator(
         policyName: String = DEFAULT_POLICY_NAME,
         deleteIoTPolicy: Boolean = false,
         deleteIoTCert: Boolean = false
-    ): ThingOperationStatus {
+    ): VehicleSetupStatus {
         log.info("Deleting IoT things")
         val thingDeletionStatus = ioTThingManager.deleteThings(
             simulationMetaDataList,
@@ -174,6 +199,8 @@ class VehicleSimulator(
     }
 
     companion object {
+        const val CONFIG_FILE_NAME = "config.json"
+
         data class LaunchStatus(
             val vehicleID: String,
             val taskArn: String

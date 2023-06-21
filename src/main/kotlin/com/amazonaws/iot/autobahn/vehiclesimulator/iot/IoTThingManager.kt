@@ -1,6 +1,7 @@
 package com.amazonaws.iot.autobahn.vehiclesimulator.iot
 
 import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
+import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSetupStatus
 import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.CertificateDeletionException
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import com.github.michaelbull.retry.policy.decorrelatedJitterBackoff
@@ -224,7 +225,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
         policyName: String = DEFAULT_POLICY_NAME,
         policyDocument: String = DEFAULT_POLICY_DOCUMENT,
         recreatePolicyIfAlreadyExists: Boolean = false
-    ): ThingOperationStatus = coroutineScope {
+    ): VehicleSetupStatus = coroutineScope {
         val cert = createKeysAndCertificate()
         log.info("Certificate ${cert.certificateId()} created")
         createPolicyAndAttachToCert(policyName, policyDocument, cert.certificateArn(), recreatePolicyIfAlreadyExists)
@@ -245,7 +246,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                     }
                 }.awaitAll()
             }
-        return@coroutineScope ThingOperationStatus(createdThings.toSet(), simConfigMap.map { it.vehicleId }.toSet() - createdThings.toSet())
+        return@coroutineScope VehicleSetupStatus(createdThings.toSet(), simConfigMap.map { it.vehicleId }.toSet() - createdThings.toSet())
     }
 
     /**
@@ -264,7 +265,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
         policyName: String = DEFAULT_POLICY_NAME,
         deletePolicy: Boolean = false,
         deleteCert: Boolean = false,
-    ): ThingOperationStatus = coroutineScope {
+    ): VehicleSetupStatus = coroutineScope {
         val deleteThingResponse =
             simConfigMap.chunked(CREATE_DELETE_THINGS_BATCH_SIZE).flatMap { chunkedList ->
                 // Delete Things with batch size set as CREATE_DELETE_THINGS_BATCH_SIZE
@@ -305,7 +306,7 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
             deleteCerts(deleteThingResponse.values.flatten().toSet())
         }
         val deletedThings = deleteThingResponse.keys
-        return@coroutineScope ThingOperationStatus(deletedThings, simConfigMap.map { it.vehicleId }.toSet() - deletedThings.toSet())
+        return@coroutineScope VehicleSetupStatus(deletedThings, simConfigMap.map { it.vehicleId }.toSet() - deletedThings.toSet())
     }
 
     /**
@@ -320,10 +321,6 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
     }
 
     companion object {
-        data class ThingOperationStatus(
-            val successList: Set<String>,
-            val failedList: Set<String>
-        )
 
         // IoT Core by default limit the createThing and deleteThing to 10TPS, hence we create / delete things
         // in a batch size of 10

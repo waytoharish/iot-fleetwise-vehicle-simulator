@@ -4,9 +4,9 @@ package com.amazonaws.iot.autobahn.vehiclesimulator.cli
 import com.amazonaws.iot.autobahn.vehiclesimulator.S3
 import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
 import com.amazonaws.iot.autobahn.vehiclesimulator.SimulatorCliInput
+import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSetupStatus
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator.Companion.StopStatus
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.ThingOperationStatus
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -52,7 +52,7 @@ internal class StopVehiclesTest {
         } returns StopStatus(taskList.toSet(), setOf())
         coEvery {
             anyConstructed<VehicleSimulator>().clean(any(), any(), any())
-        } returns ThingOperationStatus(carList.toSet(), setOf())
+        } returns VehicleSetupStatus(carList.toSet(), setOf())
         Assertions.assertEquals(0, command.call())
         verify(exactly = 1) {
             anyConstructed<VehicleSimulator>().stopVehicles(listOf("task0", "task1"))
@@ -73,7 +73,7 @@ internal class StopVehiclesTest {
         } returns StopStatus(taskList.toSet(), setOf())
         coEvery {
             anyConstructed<VehicleSimulator>().clean(any(), any(), any())
-        } returns ThingOperationStatus(carList.toSet(), setOf())
+        } returns VehicleSetupStatus(carList.toSet(), setOf())
         Assertions.assertEquals(0, command.call())
         verify(exactly = 1) {
             anyConstructed<VehicleSimulator>().stopVehicles(listOf("task0", "task1"))
@@ -95,7 +95,7 @@ internal class StopVehiclesTest {
         } returns StopStatus(taskList.toSet(), setOf())
         coEvery {
             anyConstructed<VehicleSimulator>().clean(any(), any(), any())
-        } returns ThingOperationStatus(carList.toSet(), setOf())
+        } returns VehicleSetupStatus(carList.toSet(), setOf())
         Assertions.assertEquals(0, command.call())
         verify(exactly = 1) {
             anyConstructed<VehicleSimulator>().stopVehicles(listOf("task0", "task1"))
@@ -117,7 +117,7 @@ internal class StopVehiclesTest {
         } returns StopStatus(setOf("task0"), setOf("task1"))
         coEvery {
             anyConstructed<VehicleSimulator>().clean(any(), any(), any())
-        } returns ThingOperationStatus(carList.toSet(), setOf())
+        } returns VehicleSetupStatus(carList.toSet(), setOf())
         Assertions.assertEquals(-1, command.call())
         verify(exactly = 1) {
             anyConstructed<VehicleSimulator>().stopVehicles(listOf("task0", "task1"))
@@ -139,7 +139,7 @@ internal class StopVehiclesTest {
         } returns StopStatus(taskList.toSet(), setOf())
         coEvery {
             anyConstructed<VehicleSimulator>().clean(any(), any(), any())
-        } returns ThingOperationStatus(setOf("car0"), setOf("car1"))
+        } returns VehicleSetupStatus(setOf("car0"), setOf("car1"))
         Assertions.assertEquals(-1, command.call())
         verify(exactly = 1) {
             anyConstructed<VehicleSimulator>().stopVehicles(listOf("task0", "task1"))

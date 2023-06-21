@@ -162,6 +162,8 @@ test {
     }
     systemProperty 'org.apache.logging.log4j.level', 'INFO'
 
+    //jvmArgs "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:6006"
+
     maxParallelForks = Runtime.runtime.availableProcessors().intdiv(2) ?: 1
 }
 

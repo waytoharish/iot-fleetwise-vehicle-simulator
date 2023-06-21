@@ -99,9 +99,9 @@ class LaunchVehicles(private val objectMapper: ObjectMapper = jacksonObjectMappe
                 recreateIoTPolicyIfExists = recreateIoTPolicyIfExists
             )
         }
-        log.info("Created Things: ${thingCreationStatus.successList}")
+        log.info("Set up vehicles: ${thingCreationStatus.successList}")
         if (thingCreationStatus.failedList.isNotEmpty()) {
-            log.error("Failed to create things: ${thingCreationStatus.failedList}")
+            log.error("Failed to setup vehicles: ${thingCreationStatus.failedList}")
             log.error("Cannot continue simulation as not all things are created successful")
             return -1
         }
