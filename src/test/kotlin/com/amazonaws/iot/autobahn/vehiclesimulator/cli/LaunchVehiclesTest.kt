@@ -6,8 +6,8 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.SimulatorCliInput
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSetupStatus
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator
 import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator.Companion.LaunchStatus
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_DOCUMENT
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
+import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_POLICY_DOCUMENT
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.mockk.coEvery
@@ -87,7 +87,7 @@ internal class LaunchVehiclesTest {
                 configMap,
                 "gamma",
                 DEFAULT_POLICY_NAME,
-                DEFAULT_POLICY_DOCUMENT,
+                DEFAULT_RICH_DATA_POLICY_DOCUMENT,
                 true
             )
         }

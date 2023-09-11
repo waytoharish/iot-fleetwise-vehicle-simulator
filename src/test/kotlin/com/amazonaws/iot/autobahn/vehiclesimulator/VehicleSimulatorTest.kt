@@ -47,7 +47,7 @@ class VehicleSimulatorTest {
         } returns Unit
 
         coEvery {
-            ioTThingManager.getIoTCoreDataEndPoint()
+            ioTThingManager.getIoTCoreDataEndPoint(any())
         } returns "iot-core-end-point"
     }
 

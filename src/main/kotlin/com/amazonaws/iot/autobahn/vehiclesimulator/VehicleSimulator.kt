@@ -5,8 +5,9 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.cert.ACMCertificateManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig.EdgeConfigProcessor
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_DOCUMENT
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
+import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_POLICY_DOCUMENT
+import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_ROLE_ALIAS
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.Logger
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.acmpca.AcmPcaAsyncClient
 import software.amazon.awssdk.services.ecs.EcsClient
+import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iot.IotAsyncClient
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import java.time.Duration
@@ -32,7 +34,7 @@ class VehicleSimulator(
     private val region: String,
     private val arch: String,
     private val s3Storage: S3Storage = S3Storage(S3AsyncClient.builder().region(Region.of(region)).build()),
-    private val ioTThingManager: IoTThingManager = IoTThingManager(IotAsyncClient.builder().region(Region.of(region)).build(), s3Storage),
+    private val ioTThingManager: IoTThingManager = IoTThingManager(IotAsyncClient.builder().region(Region.of(region)).build(), s3Storage, IamClient.builder().region(Region.of(region)).build()),
     private val acmCertificateManager: ACMCertificateManager = ACMCertificateManager(AcmPcaAsyncClient.builder().region(Region.of(region)).build(), s3Storage),
     private val ecsTaskManager: EcsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build(), arch)
 ) {
@@ -50,6 +52,9 @@ class VehicleSimulator(
      * @param policyName the name for the to be created IoT Policy
      * @param policyDocument the policy document for the to be created IoT Policy
      * @param recreateIoTPolicyIfExists flag to indicate whether recreate or reuse if policy with the same name already exist
+     * @param edgeUploadS3BucketName a bucket name  to create IAM role and IoT role alias to enable Edge access
+     *     to that bucket. If empty no roles and role alias will be created. These are necessary for rich-data to upload
+     *     Ion files from edge directly to S3
      * @return ThingOperationStatus contains two list of string, one list for successfully created IoT Things
      *          and one list for failed to create IoT Things
      */
@@ -59,8 +64,9 @@ class VehicleSimulator(
         edgeConfigs: Map<String, String>,
         stage: String,
         policyName: String = DEFAULT_POLICY_NAME,
-        policyDocument: String = DEFAULT_POLICY_DOCUMENT,
-        recreateIoTPolicyIfExists: Boolean
+        policyDocument: String = DEFAULT_RICH_DATA_POLICY_DOCUMENT,
+        recreateIoTPolicyIfExists: Boolean,
+        edgeUploadS3BucketName: String = ""
     ): VehicleSetupStatus {
         // Get simulation input for provisioning
         val vehiclesToProvision = simulationMetaDataList.filter {
@@ -80,6 +86,7 @@ class VehicleSimulator(
                 policyName = policyName,
                 policyDocument = policyDocument,
                 recreatePolicyIfAlreadyExists = recreateIoTPolicyIfExists,
+                edgeUploadS3BucketName = edgeUploadS3BucketName,
             )
         }
 
@@ -94,7 +101,8 @@ class VehicleSimulator(
         val config = EdgeConfigProcessor(ControlPlaneResources(region, stage), objectMapper)
         // Compose the new config with MQTT parameters based on FleetWise Test Stage and IoT Core data end point
         log.info("Creating Edge static configs")
-        val newConfigMap = config.setMqttConnectionParameter(edgeConfigs, ioTThingManager.getIoTCoreDataEndPoint())
+        val configMapWithCredentialsProvider = config.setCredentialsProviderParameter(edgeConfigs, DEFAULT_RICH_DATA_ROLE_ALIAS, ioTThingManager.getIoTCoreDataEndPoint("iot:CredentialProvider"))
+        val newConfigMap = config.setMqttConnectionParameter(configMapWithCredentialsProvider, ioTThingManager.getIoTCoreDataEndPoint())
         log.info("Uploading Edge static configs to S3")
         simulationMetaDataList.forEach {
             newConfigMap[it.vehicleId]?.let {

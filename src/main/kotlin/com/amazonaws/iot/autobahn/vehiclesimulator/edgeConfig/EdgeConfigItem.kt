@@ -27,7 +27,27 @@ data class StaticConfig(
     @JsonProperty("publishToCloudParameters")
     val publishToCloudParameters: Any,
     @JsonProperty("mqttConnection")
-    val mqttConnectionConfig: MqttConnectionConfig
+    val mqttConnectionConfig: MqttConnectionConfig,
+    @JsonProperty("credentialsProvider")
+    val credentialsProvider: CredentialsProvider?,
+    @JsonProperty("s3Upload")
+    val s3Upload: S3Upload?
+)
+
+data class S3Upload(
+    @JsonProperty("maxEnvelopeSize")
+    val maxEnvelopeSize: Long,
+    @JsonProperty("multipartSize")
+    val multipartSize: Long,
+    @JsonProperty("maxConnections")
+    val maxConnections: Long
+)
+
+data class CredentialsProvider(
+    @JsonProperty("endpointUrl")
+    val endpointUrl: String,
+    @JsonProperty("roleAlias")
+    val roleAlias: String,
 )
 
 data class MqttConnectionConfig(

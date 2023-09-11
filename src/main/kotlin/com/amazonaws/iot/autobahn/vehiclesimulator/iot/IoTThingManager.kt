@@ -16,6 +16,8 @@ import kotlinx.coroutines.future.asDeferred
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import software.amazon.awssdk.services.iam.IamClient
+import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iot.IotAsyncClient
 import software.amazon.awssdk.services.iot.model.CreateKeysAndCertificateResponse
 import software.amazon.awssdk.services.iot.model.DeleteConflictException
@@ -26,7 +28,7 @@ import software.amazon.awssdk.services.iot.model.ServiceUnavailableException
 import software.amazon.awssdk.services.iot.model.ThrottlingException
 import java.time.Duration
 
-class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Storage: S3Storage) {
+class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Storage: S3Storage, private var iamClient: IamClient) {
     private val log = LoggerFactory.getLogger(IoTThingManager::class.java)
     private suspend fun createKeysAndCertificate(): CreateKeysAndCertificateResponse {
         log.info("Creating certificate")
@@ -36,6 +38,40 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                 builder.setAsActive(true)
             }.await()
         return cert
+    }
+
+    private fun createRoleAndAlias(
+        iamRoleName: String,
+        assumeRolePolicyDocument: String,
+        policyDocument: String,
+        roleAlias: String,
+    ): String {
+        log.info("Creating Iam role '$iamRoleName' and IoT role alias for that role '$roleAlias'")
+        val iamRoleArn = try {
+            iamClient.createRole { builder ->
+                builder.roleName(iamRoleName).assumeRolePolicyDocument(assumeRolePolicyDocument)
+            }.role().arn()
+        } catch (ex: EntityAlreadyExistsException) {
+            log.info("Role '$iamRoleName' already exists, keeping it")
+            iamClient.getRole { builder ->
+                builder.roleName(iamRoleName)
+            }.role().arn()
+        }
+        iamClient.putRolePolicy() {
+            builder ->
+            builder.roleName(iamRoleName).policyName(iamRoleName).policyDocument(policyDocument)
+        }
+        val roleAliasArn = try {
+            iotClient.createRoleAlias { builder ->
+                builder.roleArn(iamRoleArn).credentialDurationSeconds(3600).roleAlias(roleAlias)
+            }.join().roleAliasArn()
+        } catch (ex: ResourceAlreadyExistsException) {
+            log.info("Role alias '$roleAlias' already exists, keeping it")
+            iotClient.describeRoleAlias { builder ->
+                builder.roleAlias(roleAlias)
+            }.join().roleAliasDescription().roleAliasArn()
+        }
+        return roleAliasArn
     }
 
     private suspend fun createPolicyAndAttachToCert(
@@ -218,16 +254,23 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
      * @param policyName Optional to allow client specify customized policy name
      * @param policyDocument Optional to allow client specify IoT Policy Document
      * @param recreatePolicyIfAlreadyExists a flag to indicate whether reuse or recreate policy if policy already exists
+     * @param edgeUploadS3BucketName a bucket name  to create IAM role and IoT role alias to enable Edge access
+     *    to that bucket. If empty no roles and role alias will be created. These are necessary for rich-data to upload
+     *    Ion files from edge directly to S3
      * @return a list of created Things and a list of failed to create things
      */
     suspend fun createAndStoreThings(
         simConfigMap: List<SimulationMetaData>, // Map<String, S3Storage.Companion.BucketAndKey>,
         policyName: String = DEFAULT_POLICY_NAME,
-        policyDocument: String = DEFAULT_POLICY_DOCUMENT,
-        recreatePolicyIfAlreadyExists: Boolean = false
+        policyDocument: String = DEFAULT_RICH_DATA_POLICY_DOCUMENT,
+        recreatePolicyIfAlreadyExists: Boolean = false,
+        edgeUploadS3BucketName: String = ""
     ): VehicleSetupStatus = coroutineScope {
         val cert = createKeysAndCertificate()
         log.info("Certificate ${cert.certificateId()} created")
+        if (!edgeUploadS3BucketName.isNullOrEmpty()) {
+            createRoleAndAlias(DEFAULT_RICH_DATA_ROLE_NAME, DEFAULT_RICH_DATA_IAM_ASSUME_ROLE_POLICY_DOCUMENT, getIamPolicy(edgeUploadS3BucketName), DEFAULT_RICH_DATA_ROLE_ALIAS)
+        }
         createPolicyAndAttachToCert(policyName, policyDocument, cert.certificateArn(), recreatePolicyIfAlreadyExists)
         val createdThings =
             simConfigMap.chunked(CREATE_DELETE_THINGS_BATCH_SIZE).flatMap {
@@ -314,9 +357,9 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
      *
      * @return IoT Device Data End Point address
      */
-    suspend fun getIoTCoreDataEndPoint(): String {
+    suspend fun getIoTCoreDataEndPoint(endpointType: String = "iot:Data-ATS"): String {
         return iotClient.describeEndpoint { builder ->
-            builder.endpointType("iot:Data-ATS")
+            builder.endpointType(endpointType)
         }.await().endpointAddress()
     }
 
@@ -350,6 +393,72 @@ class IoTThingManager(private var iotClient: IotAsyncClient, private val s3Stora
                 }
               ]
             }"""
+
+        const val DEFAULT_RICH_DATA_POLICY_DOCUMENT =
+            """{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "iot:Connect",
+                    "iot:Subscribe",
+                    "iot:Publish",
+                    "iot:Receive",
+                    "iot:AssumeRoleWithCertificate"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                }
+              ]
+            }"""
+
+        const val DEFAULT_RICH_DATA_ROLE_NAME = "vehicle-simulator-credentials-provider-s3"
+
+        const val DEFAULT_RICH_DATA_IAM_ASSUME_ROLE_POLICY_DOCUMENT =
+            """{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service" : "credentials.iot.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }
+              ]
+            }"""
+
+        const val DEFAULT_RICH_DATA_ROLE_ALIAS = "vehicle-simulator-credentials-provider"
+
+        fun getIamPolicy(bucketName: String): String {
+            return """{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:PutObject",
+                    "s3:ListBucket"
+                  ],
+                  "Resource": [
+                    "arn:aws:s3:::$bucketName",
+                    "arn:aws:s3:::$bucketName/*"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "kms:GenerateDataKey"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                }
+              ]
+            }"""
+        }
 
         private val retryPolicyForThrottlingOrServiceUnavailable =
             retryIf<Throwable> { reason is ThrottlingException || reason is ServiceUnavailableException } +

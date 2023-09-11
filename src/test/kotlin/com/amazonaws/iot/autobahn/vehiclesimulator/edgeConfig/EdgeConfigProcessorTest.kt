@@ -153,4 +153,47 @@ internal class EdgeConfigProcessorTest {
             )
         }
     }
+
+    @Test
+    fun `When setCredentialsProviderParameter called with valid config files`() {
+        val configJson =
+            """{
+                "version": "1.0",
+                "networkInterfaces": [],
+                "staticConfig": {
+                    "bufferSizes": {},
+                    "threadIdleTimes": {},
+                    "persistency": {},
+                    "internalParameters": {},
+                    "publishToCloudParameters": {},
+                    "s3Upload": {
+                          "maxEnvelopeSize": 500
+                    },
+                    "mqttConnection": {
+                          "endpointUrl": "",
+                          "clientId": "",
+                          "collectionSchemeListTopic": "",
+                          "decoderManifestTopic": "",
+                          "canDataTopic": "",
+                          "checkinTopic": "",
+                          "certificateFilename": "",
+                          "privateKeyFilename": ""
+                    }
+                }
+            }"""
+        val vehicleIDs = listOf("car1", "car2", "car3", "car4")
+        val inputConfigFileMap = vehicleIDs.associateWith { configJson }
+        // Invoke Function to set MQTT Connection Section to the config based on Gamma PDX template
+        edgeConfigProcessor.setCredentialsProviderParameter(
+            inputConfigFileMap,
+            "UnitTestRoleAlias",
+            "credentials.unit-test.endpoint"
+        ).map {
+            val processedConfig: Config = jacksonObjectMapper().readValue(it.value)
+            val processedCredentialsProvider = processedConfig.staticConfig.credentialsProvider
+            val processedS3Upload = processedConfig.staticConfig.s3Upload
+            Assertions.assertEquals(10, processedS3Upload!!.maxConnections)
+            Assertions.assertEquals("credentials.unit-test.endpoint", processedCredentialsProvider!!.endpointUrl)
+        }
+    }
 }

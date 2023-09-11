@@ -43,19 +43,54 @@ class EdgeConfigProcessor(
                 CERTIFICATE_FILE_NAME.replace("VEHICLE_ID", it.key),
                 PRIVATE_KEY_FILE_NAME.replace("VEHICLE_ID", it.key)
             )
-            val inputConfig: Config = try {
-                objectMapper.readValue(it.value)
-            } catch (ex: MissingKotlinParameterException) {
-                log.error("Config File misses Parameter for ${it.key}. Config file: ${it.value}")
-                throw ex
-            } catch (ex: UnrecognizedPropertyException) {
-                log.error("Config File contains unknown parameter for ${it.key}. Config file: ${it.value}")
-                throw ex
-            }
+            val inputConfig = parseInputConfig(it.key, it.value)
+
             // construct output config with the mqttConnection
             val outputConfig = inputConfig.copy(staticConfig = inputConfig.staticConfig.copy(mqttConnectionConfig = mqttConnectionConfig))
             it.key to objectMapper.writeValueAsString(outputConfig)
         }.toMap()
+    }
+
+    /**
+     * This function sets the credentialsProvider and s3Upload parameters for Edge config file
+     * These settings are only needed for rich-data
+     * Note the config file passed in and out as String format
+     * @param vehicleIDToConfigMap Mapping between vehicle ID and config string
+     * @param roleAliasName the name of the iot role alias
+     * @param credentialsProviderEndpoint the endpoint that is used to get the credentials
+     * @return Map contains vehicleID and config file filled with mqtt connection parameter
+     * @throws MissingKotlinParameterException if user provided config file miss parameter
+     * @throws UnrecognizedPropertyException if user provided config file include unknown parameter
+     */
+    fun setCredentialsProviderParameter(
+        vehicleIDToConfigMap: Map<String, String>,
+        roleAliasName: String,
+        credentialsProviderEndpoint: String
+    ): Map<String, String> {
+        return vehicleIDToConfigMap.mapNotNull {
+            val credentialsProvider = CredentialsProvider(
+                endpointUrl = credentialsProviderEndpoint,
+                roleAlias = roleAliasName
+            )
+            val s3Upload = S3Upload(104857600, 5242880, 10)
+            val inputConfig = parseInputConfig(it.key, it.value)
+
+            val outputConfig = inputConfig.copy(staticConfig = inputConfig.staticConfig.copy(credentialsProvider = credentialsProvider, s3Upload = s3Upload))
+            it.key to objectMapper.writeValueAsString(outputConfig)
+        }.toMap()
+    }
+
+    private fun parseInputConfig(vehicleName: String, json: String): Config {
+        val inputConfig: Config = try {
+            objectMapper.readValue(json)
+        } catch (ex: MissingKotlinParameterException) {
+            log.error("Config File misses Parameter for $vehicleName. Config file: $json")
+            throw ex
+        } catch (ex: UnrecognizedPropertyException) {
+            log.error("Config File contains unknown parameter for $vehicleName. Config file: $json")
+            throw ex
+        }
+        return inputConfig
     }
 
     companion object {

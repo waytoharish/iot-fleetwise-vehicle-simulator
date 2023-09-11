@@ -6,6 +6,7 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.CertificateDeletio
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.CERTIFICATE_FILE_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.PRIVATE_KEY_FILE_NAME
+import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.getIamPolicy
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -20,6 +21,15 @@ import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import software.amazon.awssdk.services.iam.IamClient
+import software.amazon.awssdk.services.iam.model.CreateRoleRequest
+import software.amazon.awssdk.services.iam.model.CreateRoleResponse
+import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
+import software.amazon.awssdk.services.iam.model.GetRoleRequest
+import software.amazon.awssdk.services.iam.model.GetRoleResponse
+import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
+import software.amazon.awssdk.services.iam.model.PutRolePolicyResponse
+import software.amazon.awssdk.services.iam.model.Role
 import software.amazon.awssdk.services.iot.IotAsyncClient
 import software.amazon.awssdk.services.iot.model.AttachPolicyRequest
 import software.amazon.awssdk.services.iot.model.AttachPolicyResponse
@@ -29,6 +39,8 @@ import software.amazon.awssdk.services.iot.model.CreateKeysAndCertificateRequest
 import software.amazon.awssdk.services.iot.model.CreateKeysAndCertificateResponse
 import software.amazon.awssdk.services.iot.model.CreatePolicyRequest
 import software.amazon.awssdk.services.iot.model.CreatePolicyResponse
+import software.amazon.awssdk.services.iot.model.CreateRoleAliasRequest
+import software.amazon.awssdk.services.iot.model.CreateRoleAliasResponse
 import software.amazon.awssdk.services.iot.model.CreateThingRequest
 import software.amazon.awssdk.services.iot.model.CreateThingResponse
 import software.amazon.awssdk.services.iot.model.DeleteCertificateRequest
@@ -40,6 +52,8 @@ import software.amazon.awssdk.services.iot.model.DeleteThingRequest
 import software.amazon.awssdk.services.iot.model.DeleteThingResponse
 import software.amazon.awssdk.services.iot.model.DescribeEndpointRequest
 import software.amazon.awssdk.services.iot.model.DescribeEndpointResponse
+import software.amazon.awssdk.services.iot.model.DescribeRoleAliasRequest
+import software.amazon.awssdk.services.iot.model.DescribeRoleAliasResponse
 import software.amazon.awssdk.services.iot.model.DetachPolicyRequest
 import software.amazon.awssdk.services.iot.model.DetachPolicyResponse
 import software.amazon.awssdk.services.iot.model.DetachThingPrincipalRequest
@@ -51,6 +65,7 @@ import software.amazon.awssdk.services.iot.model.ListThingPrincipalsRequest
 import software.amazon.awssdk.services.iot.model.ListThingPrincipalsResponse
 import software.amazon.awssdk.services.iot.model.ResourceAlreadyExistsException
 import software.amazon.awssdk.services.iot.model.ResourceNotFoundException
+import software.amazon.awssdk.services.iot.model.RoleAliasDescription
 import software.amazon.awssdk.services.iot.model.UpdateCertificateRequest
 import software.amazon.awssdk.services.iot.model.UpdateCertificateResponse
 import java.util.concurrent.CompletableFuture
@@ -61,7 +76,9 @@ internal class IoTThingManagerTest {
 
     private val s3Storage = mockk<S3Storage>()
 
-    private val iotThingManager = IoTThingManager(ioTClient, s3Storage)
+    private val iamClient = mockk<IamClient>()
+
+    private val iotThingManager = IoTThingManager(ioTClient, s3Storage, iamClient)
 
     private val carList = setOf("car0", "car1", "car2", "car3")
 
@@ -518,5 +535,117 @@ internal class IoTThingManagerTest {
             Assertions.assertEquals("iot:Data-ATS", it)
         }
         Assertions.assertEquals("endpointAddress", endpointAddress)
+    }
+
+    @Test
+    fun `When handing edgeUploadS3BucketName createRoleAndAlias should create role and alias`() {
+        val roleArn = "arn:aws:iam::12345678901:role/" + IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME
+        every { iamClient.createRole(any<Consumer<CreateRoleRequest.Builder>>()) } returns CreateRoleResponse.builder().role(
+            Role.builder().arn(roleArn).build()
+        ).build()
+        every { iamClient.putRolePolicy(any<Consumer<PutRolePolicyRequest.Builder>>()) } returns PutRolePolicyResponse.builder().build()
+        every { ioTClient.createRoleAlias(any<Consumer<CreateRoleAliasRequest.Builder>>()) } returns CompletableFuture.completedFuture(
+            CreateRoleAliasResponse.builder()
+                .roleAliasArn("arn:aws:iot:us-west-2:12345678901:rolealias/UnitTestRoleAlias").build()
+        )
+
+        runBlocking(Dispatchers.IO) {
+            iotThingManager.createAndStoreThings(simulationMapping, recreatePolicyIfAlreadyExists = true, edgeUploadS3BucketName = "edgeUnitTestBucketName")
+        }
+
+        coVerify(exactly = 1) {
+            iamClient.createRole(
+                withArg<Consumer<CreateRoleRequest.Builder>> {
+                    val builder = CreateRoleRequest.builder()
+                    it.accept(builder)
+                    val createRoleRequest = builder.build()
+                    Assertions.assertEquals(createRoleRequest.roleName(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME)
+                }
+            )
+            iamClient.putRolePolicy(
+                withArg<Consumer<PutRolePolicyRequest.Builder>> {
+                    val builder = PutRolePolicyRequest.builder()
+                    it.accept(builder)
+                    val putRolePolicyRequest = builder.build()
+                    Assertions.assertEquals(putRolePolicyRequest.roleName(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME)
+                    Assertions.assertEquals(putRolePolicyRequest.policyDocument(), getIamPolicy("edgeUnitTestBucketName"))
+                }
+            )
+            ioTClient.createRoleAlias(
+                withArg<Consumer<CreateRoleAliasRequest.Builder>> {
+                    val builder = CreateRoleAliasRequest.builder()
+                    it.accept(builder)
+                    val createRoleAliasRequest = builder.build()
+                    Assertions.assertEquals(createRoleAliasRequest.roleAlias(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_ALIAS)
+                    Assertions.assertEquals(createRoleAliasRequest.roleArn(), roleArn)
+                }
+            )
+        }
+    }
+
+    @Test
+    fun `When createRoleAndAlias should reuse existing role and alias if they already exist`() {
+        val roleArn = "arn:aws:iam::12345678901:role/" + IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME
+        every { iamClient.createRole(any<Consumer<CreateRoleRequest.Builder>>()) } throws EntityAlreadyExistsException.builder().build()
+        every { iamClient.getRole(any<Consumer<GetRoleRequest.Builder>>()) } returns GetRoleResponse.builder().role(
+            Role.builder().arn(roleArn).build()
+        ).build()
+        every { iamClient.putRolePolicy(any<Consumer<PutRolePolicyRequest.Builder>>()) } returns PutRolePolicyResponse.builder().build()
+        every { ioTClient.createRoleAlias(any<Consumer<CreateRoleAliasRequest.Builder>>()) } throws ResourceAlreadyExistsException.builder().build()
+        every { ioTClient.describeRoleAlias(any<Consumer<DescribeRoleAliasRequest.Builder>>()) } returns CompletableFuture.completedFuture(
+            DescribeRoleAliasResponse.builder().roleAliasDescription(
+                RoleAliasDescription.builder()
+                    .roleAliasArn("arn:aws:iot:us-west-2:12345678901:rolealias/UnitTestRoleAlias").build()
+            ).build()
+        )
+
+        runBlocking(Dispatchers.IO) {
+            iotThingManager.createAndStoreThings(simulationMapping, recreatePolicyIfAlreadyExists = true, edgeUploadS3BucketName = "edgeUnitTestBucketName")
+        }
+
+        coVerify(exactly = 1) {
+            iamClient.createRole(
+                withArg<Consumer<CreateRoleRequest.Builder>> {
+                    val builder = CreateRoleRequest.builder()
+                    it.accept(builder)
+                    val createRoleRequest = builder.build()
+                    Assertions.assertEquals(createRoleRequest.roleName(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME)
+                }
+            )
+            iamClient.getRole(
+                withArg<Consumer<GetRoleRequest.Builder>> {
+                    val builder = GetRoleRequest.builder()
+                    it.accept(builder)
+                    val getRoleRequest = builder.build()
+                    Assertions.assertEquals(getRoleRequest.roleName(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME)
+                }
+            )
+            iamClient.putRolePolicy(
+                withArg<Consumer<PutRolePolicyRequest.Builder>> {
+                    val builder = PutRolePolicyRequest.builder()
+                    it.accept(builder)
+                    val putRolePolicyRequest = builder.build()
+                    Assertions.assertEquals(putRolePolicyRequest.roleName(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_NAME)
+                    Assertions.assertEquals(putRolePolicyRequest.policyDocument(), getIamPolicy("edgeUnitTestBucketName"))
+                }
+            )
+            ioTClient.createRoleAlias(
+                withArg<Consumer<CreateRoleAliasRequest.Builder>> {
+                    val builder = CreateRoleAliasRequest.builder()
+                    it.accept(builder)
+                    val createRoleAliasRequest = builder.build()
+                    Assertions.assertEquals(createRoleAliasRequest.roleAlias(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_ALIAS)
+                    Assertions.assertEquals(createRoleAliasRequest.roleArn(), roleArn)
+                }
+            )
+            ioTClient.describeRoleAlias(
+                withArg<Consumer<DescribeRoleAliasRequest.Builder>> {
+                    val builder = DescribeRoleAliasRequest.builder()
+                    it.accept(builder)
+                    val createRoleAliasRequest = builder.build()
+                    Assertions.assertEquals(createRoleAliasRequest.roleAlias(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_ALIAS)
+                }
+            )
+        }
     }
 }
