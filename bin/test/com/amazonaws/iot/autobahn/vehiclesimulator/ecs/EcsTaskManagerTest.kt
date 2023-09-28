@@ -472,4 +472,7 @@ internal class EcsTaskManagerTest {
             every {
                 ecsClient.waiter().waitUntilTasksStopped(capture(describeTaskRequestList), capture(waiterOverrideConfigList))
             } throws it
-            assertThrows<EcsTaskManagerException> { ecsTaskManager.s
+            assertThrows<EcsTaskManagerException> { ecsTaskManager.stopTasks(inputTaskIDList) }
+        }
+    }
+}

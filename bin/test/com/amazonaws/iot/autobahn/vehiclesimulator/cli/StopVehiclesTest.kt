@@ -155,4 +155,6 @@ internal class StopVehiclesTest {
 
     @AfterEach
     fun tearDown() {
-        unmockk
+        unmockkConstructor(VehicleSimulator::class)
+    }
+}

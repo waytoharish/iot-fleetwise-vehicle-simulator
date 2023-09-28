@@ -645,4 +645,8 @@ internal class IoTThingManagerTest {
                     it.accept(builder)
                     val createRoleAliasRequest = builder.build()
                     Assertions.assertEquals(createRoleAliasRequest.roleAlias(), IoTThingManager.DEFAULT_RICH_DATA_ROLE_ALIAS)
-    
+                }
+            )
+        }
+    }
+}
