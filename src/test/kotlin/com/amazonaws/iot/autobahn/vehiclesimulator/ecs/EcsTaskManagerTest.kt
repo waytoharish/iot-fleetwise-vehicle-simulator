@@ -1,3 +1,4 @@
+@file:Suppress("INLINE_FROM_HIGHER_PLATFORM")
 package com.amazonaws.iot.autobahn.vehiclesimulator.ecs
 
 import com.amazonaws.iot.autobahn.vehiclesimulator.S3

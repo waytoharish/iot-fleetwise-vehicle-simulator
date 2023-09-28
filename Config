@@ -1,19 +1,16 @@
 package.IoTAutobahnVehicleSimulator = {
     interfaces = (1.0);
 
-    build-system = brazil-gradle;
+    build-system = gradle;
     build-tools = {
         1.0 = {
             # If you need JDK8 compatible jars or to build for RHEL5_64,
             # replace 'JDK11 = 1.0;' with 'JDK8 = 1.0;'.
             JDK11 = 1.0;
-            BrazilGradle = 6.x;
-            BrazilGradleQualityDefaults = 6.x;
             KotlinGradlePlugin = 1.4.x;
             KotlinTrailsGradle = 1.4.x;
             Ktlint = 0.38.x;
             KtlintGradle = 9.x;
-            BrazilGradleJavaWrapperGenerator = 1.1;
         };
     };
 
@@ -59,7 +56,6 @@ package.IoTAutobahnVehicleSimulator = {
 
     remove-dependencies = {
         1.0 = {
-            # These bring in Kotlin 1.3 JARs and the Lambda uses those when it shouldn't, so we remove these
             # dependencies so only the Kotlin 1.4 JARs get packaged.
             Maven-org-jetbrains-kotlin_kotlin-stdlib = 1.x;
             Maven-org-jetbrains-kotlin_kotlin-stdlib-common = 1.x;

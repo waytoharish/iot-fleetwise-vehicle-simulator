@@ -1,4 +1,4 @@
-#Vehicle Simulator
+#FleetWise Vehicle Simulator
 ##Introduction
 Vehicle Simulator is a Kotlin package providing AWS IoT FleetWise Edge Agent and Vehicle
 simulation solution on AWS platform. 
@@ -15,14 +15,11 @@ The following diagram illustrates the vehicle launch process.
 ##Development
 ###Setup
 ```
-brazil ws create --name vehicle-simulator
-cd vehicle-simulator
-brazil ws use \
-  --versionset IoTAutobahnVehicleSimulator/development \
-  --platform AL2_x86_64 \
-  --package IoTAutobahnVehicleSimulator
-cd src/IoTAutobahnVehicleSimulator
-brazil-build
+gradle build
+
+cd build\distributions\bin
+unzip vehicle-simulator
+
 ```
 
 ##CLI User Guide
@@ -30,21 +27,16 @@ brazil-build
 ### On-boarding
 #### CDK to deploy AWS resources
 For first time use, please run CDK to deploy AWS resources.
-The CDK instruction can be found in readme [IoTAutobahnVehicleSimulatorCDK](https://code.amazon.com/packages/IoTAutobahnVehicleSimulatorCDK/trees/mainline)
-#### Pull Edge Docker Image from AWS ECR
-To use the default Edge docker image, the AWS account needs to have access to the two ECRs hosted on account 
-iot-autobahn+embedded-code@amazon.com 763496144766 : 
-[vehicle-simulator-arm64](https://tiny.amazon.com/vdhs5utm/IsenLink) and [vehicle-simulator-amd64](https://tiny.amazon.com/ly1sl76q/IsenLink).
 
-There are two ways of getting access to ECR. The first approach is the quickest.
-* Add your account under internal developer service principal: 
-[developer.iot-autobahn.aws.internal](https://naps.amazon.com/service_principals/148728)
-* Log into each ECR through Isengard, go to Permissions. Click on Edit to add your AWS account.
+TBD
+
+#### Pull Edge Docker Image from AWS ECR
+
 
 ### Refresh AWS credential
 Example
 ```
-ada credentials update --account 763496144766 --role Admin --once
+
 ```
 
 ## Simulation Input Json 
@@ -141,7 +133,7 @@ Use command `LaunchVehicles` with the following options. Highlight in bold are r
 
 Example:
 ```
-brazil-runtime-exec vehicle-simulator LaunchVehicles \
+./FleetWiseVehicleSimulator LaunchVehicles \
  -r us-west-2 \
  -s simulation_input.json \
  --tag user someone testID xyz \
@@ -164,7 +156,7 @@ Use command `StopVehicles` with the following options. Highlight in bold are req
 
 Example:
 ```
-brazil-runtime-exec vehicle-simulator StopVehicles \
+./FleetWiseVehicleSimulator StopVehicles \
  -r us-west-2 \
  --ecsTaskID task1 task2 \
  -s simulation_input.json \

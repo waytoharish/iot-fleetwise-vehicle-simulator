@@ -1,0 +1,6 @@
+{
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.project.explorer.showNonJavaResources": true,
+    "java.dependency.syncWithFolderExplorer": false,
+    "kotlin.compiler.jvm.target": "1.8"
+}
