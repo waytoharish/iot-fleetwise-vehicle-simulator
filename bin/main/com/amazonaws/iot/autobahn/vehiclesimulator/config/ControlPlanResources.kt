@@ -1,8 +1,8 @@
 package com.amazonaws.iot.autobahn.config
 
-class ControlPlaneResources(region: String, stage: String, disambiguator: String? = null) {
+class ControlPlaneResources(region: String, disambiguator: String? = null) {
     private val region = region.lowercase()
-    private val stage = stage.lowercase()
+    private val stage = "prod"
     private val stageAndRegion = StageAndRegion(this.stage, this.region)
 
     private val disambiguator = if (disambiguator.isNullOrEmpty()) {

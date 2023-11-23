@@ -35,14 +35,20 @@ class LaunchVehicles(private val objectMapper: ObjectMapper = jacksonObjectMappe
     @CommandLine.Option(required = true, names = ["--region", "-r"])
     lateinit var region: String
 
-    @CommandLine.Option(required = true, names = ["--stage"])
-    lateinit var stage: String
+    @CommandLine.Option(required = true, names = ["--decoder-manifest-arn", "-d"])
+    lateinit var decoderManifestArn: String 
+
+    @CommandLine.Option(required = true, names = ["--vehicle-model-arn", "-m"])
+    lateinit var vehicleModelArn: String 
+
+    @CommandLine.Option(required = false, names = ["--createVehicles", "-c"])
+    var createVehicles: Boolean = false
 
     @CommandLine.Option(required = false, arity = "0..*", names = ["--tag", "-t"])
     var tags: List<String> = listOf()
 
     @CommandLine.Option(required = false, names = ["--cpu-architecture", "-a"])
-    var cpuArchitecture: String = "arm64"
+    var cpuArchitecture: String = "amd64"
 
     @CommandLine.Option(required = false, names = ["--recreate-iot-policy"])
     var recreateIoTPolicyIfExists: Boolean = false
@@ -51,7 +57,7 @@ class LaunchVehicles(private val objectMapper: ObjectMapper = jacksonObjectMappe
     var ecsTaskDefinition: String = "fwe-$cpuArchitecture-with-cw"
 
     // Timeout is in unit of minute
-    @CommandLine.Option(required = false, names = ["--ecs-waiter-timeout"])
+    @CommandLine.Option(required = false, names = ["--ecs-waiter-timeout", "-w"])
     var ecsWaiterTimeout: Int = 5
 
     @CommandLine.Option(required = false, names = ["--ecs-waiter-retries"])
@@ -95,8 +101,10 @@ class LaunchVehicles(private val objectMapper: ObjectMapper = jacksonObjectMappe
                 objectMapper,
                 simConfigMaps.map { it.simulationMetaData },
                 edgeConfigFiles,
-                stage,
-                recreateIoTPolicyIfExists = recreateIoTPolicyIfExists
+                recreateIoTPolicyIfExists = recreateIoTPolicyIfExists,
+                decoderManifest = decoderManifestArn,
+                vehicleModel = vehicleModelArn,
+                createVehicles = createVehicles
             )
         }
         log.info("Set up vehicles: ${thingCreationStatus.successList}")

@@ -8,15 +8,23 @@ import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_POLICY_DOCUMENT
 import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_ROLE_ALIAS
+import com.amazonaws.iot.autobahn.vehiclesimulator.fw.FleetWiseManager
 import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.future.asDeferred
+import kotlinx.coroutines.future.await
+import kotlinx.coroutines.launch
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.acmpca.AcmPcaAsyncClient
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iot.IotAsyncClient
+import software.amazon.awssdk.services.iotfleetwise.IoTFleetWiseAsyncClient
 import software.amazon.awssdk.services.s3.S3AsyncClient
 import java.time.Duration
 
@@ -36,7 +44,8 @@ class VehicleSimulator(
     private val s3Storage: S3Storage = S3Storage(S3AsyncClient.builder().region(Region.of(region)).build()),
     private val ioTThingManager: IoTThingManager = IoTThingManager(IotAsyncClient.builder().region(Region.of(region)).build(), s3Storage, IamClient.builder().region(Region.of(region)).build()),
     private val acmCertificateManager: ACMCertificateManager = ACMCertificateManager(AcmPcaAsyncClient.builder().region(Region.of(region)).build(), s3Storage),
-    private val ecsTaskManager: EcsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build(), arch)
+    private val ecsTaskManager: EcsTaskManager = EcsTaskManager(EcsClient.builder().region(Region.of(region)).build(), arch),
+    private val fwManager: FleetWiseManager = FleetWiseManager(IoTFleetWiseAsyncClient.builder().region(Region.of(region)).build())
 ) {
     private val log: Logger = LoggerFactory.getLogger(VehicleSimulator::class.java)
     /**
@@ -62,11 +71,13 @@ class VehicleSimulator(
         objectMapper: ObjectMapper,
         simulationMetaDataList: List<SimulationMetaData>,
         edgeConfigs: Map<String, String>,
-        stage: String,
         policyName: String = DEFAULT_POLICY_NAME,
         policyDocument: String = DEFAULT_RICH_DATA_POLICY_DOCUMENT,
         recreateIoTPolicyIfExists: Boolean,
-        edgeUploadS3BucketName: String = ""
+        edgeUploadS3BucketName: String = "",
+        decoderManifest: String = "",
+        vehicleModel: String = "",
+        createVehicles: Boolean
     ): VehicleSetupStatus {
         // Get simulation input for provisioning
         val vehiclesToProvision = simulationMetaDataList.filter {
@@ -88,8 +99,14 @@ class VehicleSimulator(
                 recreatePolicyIfAlreadyExists = recreateIoTPolicyIfExists,
                 edgeUploadS3BucketName = edgeUploadS3BucketName,
             )
+            if(createVehicles) {
+                log.info("Creating FleetWise vehicles for:  ${vehiclesToProvision.size}")
+                simulationMetaDataList.forEach {
+                    fwManager.createVehicle(it.vehicleId, vehicleModel, decoderManifest)
+                }
+            }
         }
-
+        
         if (vehiclesWithPrivateCert.isNotEmpty()) {
             log.info("Creating and uploading private keys and certs for vehicles: ${vehiclesWithPrivateCert.size}")
             privateCertCreationStatus = acmCertificateManager.setupVehiclesWithCertAndPrivateKey(vehiclesWithPrivateCert)
@@ -98,7 +115,7 @@ class VehicleSimulator(
             thingCreationStatus.successList + privateCertCreationStatus.successList,
             thingCreationStatus.failedList + privateCertCreationStatus.failedList
         )
-        val config = EdgeConfigProcessor(ControlPlaneResources(region, stage), objectMapper)
+        val config = EdgeConfigProcessor(ControlPlaneResources(region), objectMapper)
         // Compose the new config with MQTT parameters based on FleetWise Test Stage and IoT Core data end point
         log.info("Creating Edge static configs")
         val configMapWithCredentialsProvider = config.setCredentialsProviderParameter(edgeConfigs, DEFAULT_RICH_DATA_ROLE_ALIAS, ioTThingManager.getIoTCoreDataEndPoint("iot:CredentialProvider"))

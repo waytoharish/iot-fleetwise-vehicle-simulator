@@ -30,6 +30,7 @@ dependencies {
     implementation("software.amazon.awssdk:ssooidc")
     implementation("software.amazon.awssdk:acmpca")
     implementation("software.amazon.awssdk:iot")
+    implementation("software.amazon.awssdk:iotfleetwise")
     implementation("software.amazon.awssdk:iam")
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
     implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
@@ -58,14 +59,6 @@ sourceSets {
             setSrcDirs(listOf("src/main/resources"))
         }
     }
-    test {
-        kotlin { 
-            setSrcDirs(listOf("src/main/kotlin"))
-        }
-        resources {
-            setSrcDirs(listOf("src/main/resources"))
-        }
-  }
 }
 
 application {

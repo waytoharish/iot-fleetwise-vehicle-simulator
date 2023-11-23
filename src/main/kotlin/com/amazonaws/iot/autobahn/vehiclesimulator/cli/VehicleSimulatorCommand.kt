@@ -25,14 +25,17 @@ class KotlinApp {
     subcommands = [
         UploadToS3Command::class,
         LaunchVehicles::class,
-        StopVehicles::class
+        StopVehicles::class,
+        FixFirmwareVersion::class
     ]
 )
 
 class VehicleSimulatorCommand : Callable<Int> {
     private val log: Logger = LoggerFactory.getLogger(VehicleSimulatorCommand::class.java)
     override fun call(): Int {
-        log.info("Please specify commands")
+        log.info("FleetWise Vehicle Simulator \n")
+        log.info("To continue, please select one of the following options when running this command: LaunchVehicles, StopVehicles, or FixFirmwareVersion \n")
+        
         return 1
     }
 
