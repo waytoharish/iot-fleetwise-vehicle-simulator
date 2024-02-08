@@ -63,5 +63,5 @@ sourceSets {
 
 application {
     // Define the main class for the application.
-    mainClass.set("com.amazonaws.iot.autobahn.vehiclesimulator.cli.VehicleSimulatorCommandKt")
+    mainClass.set("com.amazonaws.iot.fleetwise.vehiclesimulator.cli.VehicleSimulatorCommandKt")
 }

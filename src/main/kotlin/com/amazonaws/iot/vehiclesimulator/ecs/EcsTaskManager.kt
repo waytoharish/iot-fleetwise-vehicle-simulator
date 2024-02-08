@@ -1,7 +1,7 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.ecs
+package com.amazonaws.iot.fleetwise.vehiclesimulator.ecs
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
-import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.EcsTaskManagerException
+import com.amazonaws.iot.fleetwise.vehiclesimulator.SimulationMetaData
+import com.amazonaws.iot.fleetwise.vehiclesimulator.exceptions.EcsTaskManagerException
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import software.amazon.awssdk.core.exception.SdkClientException

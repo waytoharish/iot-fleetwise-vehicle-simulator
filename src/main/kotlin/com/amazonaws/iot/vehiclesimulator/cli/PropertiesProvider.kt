@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.cli
+package com.amazonaws.iot.fleetwise.vehiclesimulator.cli
 
 import picocli.CommandLine
 import java.time.Instant

@@ -1,8 +1,8 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.cert
+package com.amazonaws.iot.fleetwise.vehiclesimulator.cert
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
-import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSetupStatus
-import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import com.amazonaws.iot.fleetwise.vehiclesimulator.SimulationMetaData
+import com.amazonaws.iot.fleetwise.vehiclesimulator.VehicleSetupStatus
+import com.amazonaws.iot.fleetwise.vehiclesimulator.storage.S3Storage
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import org.bouncycastle.asn1.x500.X500Name

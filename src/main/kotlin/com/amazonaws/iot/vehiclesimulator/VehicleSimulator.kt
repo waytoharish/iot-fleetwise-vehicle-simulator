@@ -1,15 +1,15 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator
+package com.amazonaws.iot.fleetwise.vehiclesimulator
 
-import com.amazonaws.iot.autobahn.config.ControlPlaneResources
-import com.amazonaws.iot.autobahn.vehiclesimulator.cert.ACMCertificateManager
-import com.amazonaws.iot.autobahn.vehiclesimulator.ecs.EcsTaskManager
-import com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig.EdgeConfigProcessor
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_POLICY_DOCUMENT
-import com.amazonaws.iot.autobahn.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_ROLE_ALIAS
-import com.amazonaws.iot.autobahn.vehiclesimulator.fw.FleetWiseManager
-import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import com.amazonaws.iot.fleetwise.config.ControlPlaneResources
+import com.amazonaws.iot.fleetwise.vehiclesimulator.cert.ACMCertificateManager
+import com.amazonaws.iot.fleetwise.vehiclesimulator.ecs.EcsTaskManager
+import com.amazonaws.iot.fleetwise.vehiclesimulator.edgeConfig.EdgeConfigProcessor
+import com.amazonaws.iot.fleetwise.vehiclesimulator.iot.IoTThingManager
+import com.amazonaws.iot.fleetwise.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_POLICY_NAME
+import com.amazonaws.iot.fleetwise.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_POLICY_DOCUMENT
+import com.amazonaws.iot.fleetwise.vehiclesimulator.iot.IoTThingManager.Companion.DEFAULT_RICH_DATA_ROLE_ALIAS
+import com.amazonaws.iot.fleetwise.vehiclesimulator.fw.FleetWiseManager
+import com.amazonaws.iot.fleetwise.vehiclesimulator.storage.S3Storage
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory

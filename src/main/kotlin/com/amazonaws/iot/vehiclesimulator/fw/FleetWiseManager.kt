@@ -1,9 +1,9 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.fw
+package com.amazonaws.iot.fleetwise.vehiclesimulator.fw
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.SimulationMetaData
-import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSetupStatus
-import com.amazonaws.iot.autobahn.vehiclesimulator.exceptions.CertificateDeletionException
-import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import com.amazonaws.iot.fleetwise.vehiclesimulator.SimulationMetaData
+import com.amazonaws.iot.fleetwise.vehiclesimulator.VehicleSetupStatus
+import com.amazonaws.iot.fleetwise.vehiclesimulator.exceptions.CertificateDeletionException
+import com.amazonaws.iot.fleetwise.vehiclesimulator.storage.S3Storage
 import com.github.michaelbull.retry.policy.decorrelatedJitterBackoff
 import com.github.michaelbull.retry.policy.limitAttempts
 import com.github.michaelbull.retry.policy.plus

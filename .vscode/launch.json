@@ -6,10 +6,10 @@
     "configurations": [
         {
             "type": "kotlin",
-            "name": "IoTAutobahnVehicleSimulator",
+            "name": "FleetWiseVehicleSimulator",
             "request": "launch",
             "projectRoot": "${workspaceFolder}",
-            "mainClass": "com.amazonaws.iot.autobahn.vehiclesimulator.cli.VehicleSimulatorCommandKt",
+            "mainClass": "com.amazonaws.iot.fleetwise.vehiclesimulator.cli.VehicleSimulatorCommandKt",
             "preLaunchTask": "build"
         }
     ]

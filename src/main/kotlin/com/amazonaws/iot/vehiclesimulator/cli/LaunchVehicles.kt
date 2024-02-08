@@ -1,8 +1,8 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.cli
+package com.amazonaws.iot.fleetwise.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.SimulatorCliInput
-import com.amazonaws.iot.autobahn.vehiclesimulator.VehicleSimulator
-import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import com.amazonaws.iot.fleetwise.vehiclesimulator.SimulatorCliInput
+import com.amazonaws.iot.fleetwise.vehiclesimulator.VehicleSimulator
+import com.amazonaws.iot.fleetwise.vehiclesimulator.storage.S3Storage
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue

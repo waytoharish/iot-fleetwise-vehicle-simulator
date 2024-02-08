@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator
+package com.amazonaws.iot.fleetwise.vehiclesimulator
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty

@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.exceptions
+package com.amazonaws.iot.fleetwise.vehiclesimulator.exceptions
 
 class EcsTaskManagerException : Exception {
     constructor(message: String, cause: Throwable) : super(message, cause)

@@ -1,6 +1,6 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.cli
+package com.amazonaws.iot.fleetwise.vehiclesimulator.cli
 
-import com.amazonaws.iot.autobahn.vehiclesimulator.storage.S3Storage
+import com.amazonaws.iot.fleetwise.vehiclesimulator.storage.S3Storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.slf4j.Logger

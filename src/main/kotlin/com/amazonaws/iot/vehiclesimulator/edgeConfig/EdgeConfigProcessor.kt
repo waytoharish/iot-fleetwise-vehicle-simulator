@@ -1,6 +1,6 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig
+package com.amazonaws.iot.fleetwise.vehiclesimulator.edgeConfig
 
-import com.amazonaws.iot.autobahn.config.ControlPlaneResources
+import com.amazonaws.iot.fleetwise.config.ControlPlaneResources
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 //import com.fasterxml.jackson.module.kotlin.MissingKotlinParameterException

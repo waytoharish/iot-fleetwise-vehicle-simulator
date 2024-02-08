@@ -16,7 +16,7 @@ package.IoTAutobahnVehicleSimulator = {
 
     dependencies = {
         1.0 = {
-            IoTAutobahnConfig = 1.0;
+            VehicleSimulatorConfig = 1.0;
             KotlinStdlibJdk8 = 1.4.x;
             KotlinxCoroutinesCore = 1.4.x;
             KotlinxCoroutinesJdk8 = 1.4.x;
@@ -75,6 +75,6 @@ package.IoTAutobahnVehicleSimulator = {
     };
 
     targets = {
-        IoTAutobahnVehicleSimulator-1.0 = { type = javalibrary; };
+        FleetWiseVehicleSimulator-1.0 = { type = javalibrary; };
     };
 };

@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator
+package com.amazonaws.iot.fleetwise.vehiclesimulator
 
 data class VehicleSetupStatus(
     val successList: Set<String>,

@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.storage
+package com.amazonaws.iot.fleetwise.vehiclesimulator.storage
 
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.future.asDeferred

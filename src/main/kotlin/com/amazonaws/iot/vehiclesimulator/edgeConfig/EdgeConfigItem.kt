@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.vehiclesimulator.edgeConfig
+package com.amazonaws.iot.fleetwise.vehiclesimulator.edgeConfig
 
 import com.fasterxml.jackson.annotation.JsonProperty
 

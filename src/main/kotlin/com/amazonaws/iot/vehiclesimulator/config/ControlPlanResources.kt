@@ -1,4 +1,4 @@
-package com.amazonaws.iot.autobahn.config
+package com.amazonaws.iot.fleetwise.config
 
 class ControlPlaneResources(region: String, disambiguator: String? = null) {
     private val region = region.lowercase()
