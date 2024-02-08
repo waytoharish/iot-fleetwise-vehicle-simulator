@@ -1,0 +1,222 @@
+[
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083101",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083101"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083102",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083102"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083103",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083103"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083104",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083104"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083105",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083105"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },   
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083106",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083106"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083107",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083107"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083108",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083108"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083109",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083109"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/unhealthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083110",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083110"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/unhealthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083111",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083111"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083112",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083112"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083113",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083113"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083114",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083114"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083115",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083115"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },   
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083116",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083116"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083117",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083117"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083118",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083118"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083119",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083119"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083120",
+            "s3": {
+                "bucket": "UNIQUEID",
+                "key": "vehicle-simulator-workshop/KNADE163966083120"
+            }
+        },
+        "edgeConfigFilename": "FleetWiseVehicleSimulator/bin/config.json",
+        "simulationScriptPath": "FleetWiseVehicleSimulator/bin/healthy"
+    }
+]

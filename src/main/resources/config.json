@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "networkInterfaces": [
+    {
+      "canInterface": {
+        "interfaceName": "vcan0",
+        "protocolName": "CAN",
+        "protocolVersion": "2.0A"
+      },
+      "interfaceId": "1",
+      "type": "canInterface"
+    },
+    {
+      "obdInterface": {
+        "interfaceName": "vcan0",
+        "requestMessageId": 2015,
+        "obdStandard": "J1979",
+        "useExtendedIds": false,
+        "hasTransmissionEcu": true,
+        "pidRequestIntervalSeconds": 5,
+        "dtcRequestIntervalSeconds": 5
+      },
+      "interfaceId": "0",
+      "type": "obdInterface"
+    }
+  ],
+  "staticConfig": {
+    "bufferSizes": {
+      "dtcBufferSize": 100,
+      "socketCANBufferSize": 10000,
+      "decodedSignalsBufferSize": 10000,
+      "rawCANFrameBufferSize": 10000
+    },
+    "threadIdleTimes": {
+      "inspectionThreadIdleTimeMs": 50,
+      "socketCANThreadIdleTimeMs": 50,
+      "canDecoderThreadIdleTimeMs": 50
+    },
+    "persistency": {
+      "persistencyPath": "/etc/aws-iot-fleetwise",
+      "persistencyPartitionMaxSize": 524288,
+      "persistencyUploadRetryInterval": 10000
+    },
+    "internalParameters": {
+      "readyToPublishDataBufferSize": 10000,
+      "systemWideLogLevel": "Trace",
+      "dataReductionProbabilityDisabled": false
+    },
+    "publishToCloudParameters": {
+      "maxPublishMessageCount": 1000,
+      "collectionSchemeManagementCheckinIntervalMs": 5000
+    },
+    "mqttConnection": {
+      "endpointUrl": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "clientId": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "collectionSchemeListTopic": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "decoderManifestTopic": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "canDataTopic": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "checkinTopic": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "certificateFilename": "TO_BE_SET_BY_VEHICLE_SIMULATOR",
+      "privateKeyFilename": "TO_BE_SET_BY_VEHICLE_SIMULATOR"
+    }
+  }
+}
