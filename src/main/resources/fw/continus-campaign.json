@@ -1,0 +1,100 @@
+{
+  "name": "conditional-snapshot-campaign",
+  "collectionScheme": {
+    "timeBasedCollectionScheme": {
+      "periodMs": 10000
+    }
+  },
+  "dataDestinationConfigs": [
+    {
+      "timestreamConfig": {
+        "timestreamTableArn": "arn:aws:timestream:us-east-1:034352053400:database/FleetWiseDatabase/table/FleetWiseTable",
+        "executionRoleArn": "arn:aws:iam::034352053400:role/fleetwise-core-stack-timestreamexecroleRole997DBE99-ZXVaBYW6yj0D"
+      }
+    }
+  ],
+  "description": "",
+  "signalCatalogArn": "arn:aws:iotfleetwise:us-east-1:034352053400:signal-catalog/default",
+  "targetArn": "arn:aws:iotfleetwise:us-east-1:034352053400:fleet/fleet",
+  "postTriggerCollectionDuration": 0,
+  "diagnosticsMode": "OFF",
+  "spoolingMode": "OFF",
+  "compression": "SNAPPY",
+  "priority": 0,
+  "signalsToCollect": [
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryAvailableChargePower",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryAvailableDischargePower",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BMSFirmwareVersion",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryCurrent",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryDCVoltage",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.FanRunning",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.StateOfHealth",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.StateOfCharge.Displayed",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.StateOfCharge.Current",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.9.Voltage",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.8.Voltage",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.7.Temperature",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.8.Temperature",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.1.Voltage",
+      "maxSampleCount": 100,
+      "minimumSamplingIntervalMs": 0
+    }
+  ],
+
+  "dataExtraDimensions": []
+
+
+}

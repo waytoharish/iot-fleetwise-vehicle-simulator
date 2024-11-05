@@ -1,0 +1,38 @@
+[
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083101",
+            "s3": {
+                "bucket": "KNADE163966083101",
+                "key": "vehicle-simulator-workshop/KNADE163966083101"
+            },
+            "provisionThing":"false",
+            "deviceCertificateConfig": {
+                "pcaArn": "arn:aws:acm-pca:eu-central-1:415644506768:certificate-authority/6d13e80b-43af-48f2-8052-61f85ab7f9d4",
+                "commonName": "car1",
+                "organization": "Amazon",
+                "countryCode": "US"
+            }
+        },
+        "edgeConfigFilename": "./src/main/resources/config.json",
+        "simulationScriptPath": "./src/main/resources/healthy"
+    },
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083102",
+            "s3": {
+                "bucket": "KNADE163966083102",
+                "key": "vehicle-simulator-workshop/KNADE163966083102"
+            },
+            "provisionThing":"false",
+            "deviceCertificateConfig": {
+                "pcaArn": "arn:aws:acm-pca:us-east-1:415644506768:certificate-authority/6d13e80b-43af-48f2-8052-61f85ab7f9d4",
+                "commonName": "car1",
+                "organization": "Amazon",
+                "countryCode": "US"
+            }
+        },
+        "edgeConfigFilename": "C:/Users/jitinku/Desktop/Me/Fleetwise/iot-fleetwise-vehicle-simulator/src/main/resources/config.json",
+        "simulationScriptPath": "C:/Users/jitinku/Desktop/Me/Fleetwise/iot-fleetwise-vehicle-simulator/src/main/resources/healthy"
+    }
+]

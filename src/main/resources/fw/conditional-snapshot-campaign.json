@@ -1,0 +1,69 @@
+{
+  "name": "conditional-snapshot-campaign",
+  "signalCatalogArn": "arn:aws:iotfleetwise:${AWS_REGION}:${AWS_ACCOUNT_ID}:signal-catalog/main-signal-catalog",
+  "targetArn": "arn:aws:iotfleetwise:${AWS_REGION}:${AWS_ACCOUNT_ID}:fleet/blog-fleet",
+
+  "collectionScheme": {
+    "conditionBasedCollectionScheme": {
+      "conditionLanguageVersion": 1,
+      "expression": "$variable.`EVBatterySample.BMS.BatteryPack01.ShuntPlusCurrent_a` > 450.0",
+      "minimumTriggerIntervalMs": 5000,
+      "triggerMode": "ALWAYS"
+    }
+  },
+  "dataDestinationConfigs":[
+    {
+      "timestreamConfig": {
+        "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/AWSIoTFleetWiseServiceRole",
+        "timestreamTableArn": "arn:aws:timestream:${AWS_REGION}:${AWS_ACCOUNT_ID}:database/FleetWiseDatabase/table/FleetWiseTable"
+      }
+    }
+  ],
+  "diagnosticsMode": "OFF",
+  "dataExtraDimensions": ["VehicleVIN"],
+  "spoolingMode": "TO_DISK",
+  "signalsToCollect": [
+    {
+      "maxSampleCount": 100,
+
+      "name": "EVBatterySample.Drivetrain.ActualVehicleSpeed"
+    },
+
+    {
+      "maxSampleCount": 100,
+
+      "name": "EVBatterySample.BMS.BatteryPack01.BatteryPackVoltagePlus"
+    },
+    {
+      "maxSampleCount": 100,
+
+      "name": "EVBatterySample.BMS.BatteryPack01.BatteryPackVoltageMinus"
+    },
+    {
+      "maxSampleCount": 100,
+
+      "name": "EVBatterySample.BMS.BatteryPack01.Cell001.CellTemperature"
+    },
+    {
+      "maxSampleCount": 100,
+
+      "name": "OBD.EngineSpeed"
+    },
+    {
+      "maxSampleCount": 100,
+      "name": "EVBatterySample.BMS.BatteryPack01.ShuntPlusCurrent_a"
+    },
+    {
+      "maxSampleCount": 100,
+      "name": "EVBatterySample.BMS.BatteryPack01.ShuntMinusCurrent_a"
+    },
+    {
+      "maxSampleCount": 100,
+      "name": "EVBatterySample.BMS.BatteryPack01.ShuntPlusCurrentQualifier_enum"
+    },
+    {
+      "maxSampleCount": 100,
+      "name": "EVBatterySample.BMS.BatteryPack01.ShuntMinusCurrentQualifier_enum"
+    }
+  ]
+}

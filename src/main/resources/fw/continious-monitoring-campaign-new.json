@@ -1,0 +1,168 @@
+{
+  "name": "continious-monitoring-campaign",
+  "targetArn": "arn:aws:iotfleetwise:${AWS_REGION}:${AWS_ACCOUNT_ID}:fleet/fleet",
+  "signalCatalogArn": "arn:aws:iotfleetwise:${AWS_REGION}:${AWS_ACCOUNT_ID}:signal-catalog/main-signal-catalog",
+  "collectionScheme": {
+    "timeBasedCollectionScheme": {
+      "periodMs": 30000
+    }
+  },
+  "dataDestinationConfigs":[
+    {
+      "timestreamConfig": {
+        "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/AWSIoTFleetWiseServiceRole",
+        "timestreamTableArn": "arn:aws:timestream:${AWS_REGION}:${AWS_ACCOUNT_ID}:database/FleetWiseDatabase/table/FleetWiseTable"
+      }
+    }
+  ],
+  "diagnosticsMode": "OFF",
+  "dataExtraDimensions": [],
+  "spoolingMode": "TO_DISK",
+  "signalsToCollect": [
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.11.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.10.Voltage",
+      "maxSampleCount": 100
+    },
+
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.1.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.FanRunning",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Charging.IsCharging",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryDCVoltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryCurrent",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.BatteryAvailableChargePower",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.12.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.13.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.14.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.15.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.16.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.17.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.18.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.2.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.20.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.21.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.22.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.23.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.24.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.25.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.26.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.27.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.28.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.29.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.30.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.31.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.32.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.3.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.4.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.5.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.6.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.7.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.8.Voltage",
+      "maxSampleCount": 100
+    },
+    {
+      "name": "Vehicle.Powertrain.Battery.Module.9.Voltage",
+      "maxSampleCount": 100
+    }
+  ]
+}

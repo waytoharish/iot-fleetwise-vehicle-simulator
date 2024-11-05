@@ -1,0 +1,15 @@
+[
+    {
+        "simulationMetaData": {
+            "vehicleID": "KNADE163966083108",
+            "s3": {
+                "bucket": "iot-vehicle-simulator-ecs-simulationbucketc119e589-2ncpub5gv7qz",
+                "key": "vehicle-simulator-workshop/KNADE163966083108"
+            },
+            "provisionThing": true
+        },
+        "edgeConfigFilename": "./src/main/resources/config.json",
+        "simulationScriptPath": "./src/main/resources/healthy"
+    }
+
+]
